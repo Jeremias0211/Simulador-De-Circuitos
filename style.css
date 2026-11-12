@@ -1,4 +1,15 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+/* Fuentes incluidas en la carpeta fonts/ (licencia SIL OFL 1.1): funcionan sin internet. */
+@font-face{font-family:'Inter';font-style:normal;font-weight:400;font-display:swap;src:url('fonts/inter-latin-400-normal.woff2') format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
+@font-face{font-family:'Inter';font-style:normal;font-weight:500;font-display:swap;src:url('fonts/inter-latin-500-normal.woff2') format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
+@font-face{font-family:'Inter';font-style:normal;font-weight:600;font-display:swap;src:url('fonts/inter-latin-600-normal.woff2') format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
+@font-face{font-family:'Inter';font-style:normal;font-weight:700;font-display:swap;src:url('fonts/inter-latin-700-normal.woff2') format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
+@font-face{font-family:'Inter';font-style:normal;font-weight:400;font-display:swap;src:url('fonts/inter-greek-400-normal.woff2') format('woff2');unicode-range:U+0370-03FF;}
+@font-face{font-family:'Inter';font-style:normal;font-weight:600;font-display:swap;src:url('fonts/inter-greek-600-normal.woff2') format('woff2');unicode-range:U+0370-03FF;}
+@font-face{font-family:'JetBrains Mono';font-style:normal;font-weight:400;font-display:swap;src:url('fonts/jetbrains-mono-latin-400-normal.woff2') format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
+@font-face{font-family:'JetBrains Mono';font-style:normal;font-weight:500;font-display:swap;src:url('fonts/jetbrains-mono-latin-500-normal.woff2') format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
+@font-face{font-family:'JetBrains Mono';font-style:normal;font-weight:700;font-display:swap;src:url('fonts/jetbrains-mono-latin-700-normal.woff2') format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
+@font-face{font-family:'JetBrains Mono';font-style:normal;font-weight:400;font-display:swap;src:url('fonts/jetbrains-mono-greek-400-normal.woff2') format('woff2');unicode-range:U+0370-03FF;}
+@font-face{font-family:'JetBrains Mono';font-style:normal;font-weight:700;font-display:swap;src:url('fonts/jetbrains-mono-greek-700-normal.woff2') format('woff2');unicode-range:U+0370-03FF;}
 
 :root{
   --bg:#0a090a;
@@ -384,4 +395,173 @@ svg#canvas{
   .topbar .actions .icon-button{flex-basis:32px;}
   .palette{padding:8px;}
   .canvas-wrap{height:55vh;min-height:250px;}
+}
+
+/* ---------- corriente animada ---------- */
+.flow-path{
+  fill:none;stroke:#ffd36b;stroke-linecap:round;stroke-dasharray:0.1 16;
+  pointer-events:none;animation:flow 1s linear infinite;
+  filter:drop-shadow(0 0 2px rgba(255,211,107,.9));
+}
+@keyframes flow{from{stroke-dashoffset:16.1;}to{stroke-dashoffset:0;}}
+@media (prefers-reduced-motion:reduce){.flow-path{animation:none;}}
+
+/* ---------- barra superior: menú Archivo ---------- */
+details.menu{position:relative;}
+details.menu summary{list-style:none;}
+details.menu summary::-webkit-details-marker{display:none;}
+.menu-button{
+  cursor:pointer;border:1px solid var(--border);border-radius:5px;padding:8px 12px;
+  font-size:12.5px;font-weight:500;color:var(--text);user-select:none;
+}
+.menu-button:hover,details.menu[open] .menu-button{border-color:var(--copper);}
+.menu-list{
+  position:absolute;right:0;top:calc(100% + 6px);z-index:30;min-width:220px;
+  display:flex;flex-direction:column;gap:2px;padding:6px;
+  background:var(--panel);border:1px solid var(--border);border-radius:8px;
+  box-shadow:0 12px 30px rgba(0,0,0,.4);
+}
+.menu-list button{background:transparent;border-color:transparent;text-align:left;}
+.menu-list button:hover{background:var(--panel-2);border-color:var(--border);}
+.menu-list hr{border:0;border-top:1px solid var(--border);margin:4px 2px;width:auto;}
+
+/* ---------- panel de simulación ---------- */
+.side-panel h2{display:flex;align-items:center;justify-content:space-between;gap:8px;}
+.live-toggle{display:flex;align-items:center;gap:5px;text-transform:none;letter-spacing:0;font-size:11px;color:var(--text);cursor:pointer;}
+.live-toggle input{accent-color:var(--copper-bright);margin:0;}
+.sim-equivalent{margin-bottom:8px;padding:8px 9px;border:1px dashed var(--border);border-radius:5px;background:var(--bg);}
+.sim-equivalent span{display:block;font-size:9.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px;}
+.sim-equivalent b{font:500 10.5px 'JetBrains Mono',monospace;color:#40b78c;}
+.sim-row.burned span,.sim-row.burned b{color:#d6505f;}
+.sim-tip{margin-top:9px;font-size:10.5px;color:var(--muted);}
+.sim-tip strong{color:var(--text);}
+
+/* ---------- propiedades ---------- */
+.field-note{font-size:10.5px;color:var(--muted);line-height:1.5;margin:-4px 0 10px;}
+.field-note strong{color:var(--text);}
+.muted{color:var(--muted);}
+.explain{margin:10px 0;padding:9px 10px;border-radius:5px;background:var(--bg);border:1px solid var(--border);font-size:11px;line-height:1.55;}
+.explain summary{cursor:pointer;font-weight:600;color:var(--copper-bright);margin-bottom:4px;}
+.explain p{margin:5px 0;}
+.explain code{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--text);background:var(--panel-2);padding:1px 4px;border-radius:3px;white-space:normal;}
+.explain button{margin-top:6px;width:100%;}
+.explain.muted{color:var(--muted);}
+.color-code{display:flex;align-items:center;gap:10px;margin:-2px 0 10px;padding:8px;border-radius:5px;background:var(--bg);font-size:10.5px;line-height:1.4;}
+.color-code svg{flex:none;}
+.color-code span{display:block;font-size:9.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;}
+.seg.active{fill:var(--copper)!important;}
+
+/* ---------- desafíos ---------- */
+.challenge-count{font-family:'JetBrains Mono',monospace;color:#40b78c;}
+.challenge-nav{display:flex;align-items:center;gap:6px;font-size:12px;}
+.challenge-nav b{flex:1;text-align:center;}
+.challenge-text{font-size:11.5px;line-height:1.55;color:var(--muted);margin:8px 0 0;}
+.challenge-feedback{margin-top:10px;padding:8px 9px;border-radius:5px;font-size:11px;line-height:1.5;background:var(--bg);border-left:2px solid #f0b45a;}
+.challenge-feedback.ok{border-left-color:#40b78c;color:#40b78c;font-weight:600;}
+
+/* ---------- vista 3D ---------- */
+.view3d{position:fixed;inset:0;z-index:40;display:flex;flex-direction:column;background:#0b0a0c;}
+.view3d[hidden]{display:none;}
+.view3d-bar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:9px 16px;background:var(--panel);border-bottom:1px solid var(--border);font-size:13px;}
+.view3d-help{color:var(--muted);font-size:11px;flex:1;min-width:200px;}
+.view3d-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+.view3d-actions label{display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer;}
+.view3d-actions input{accent-color:var(--copper-bright);}
+.view3d-stage{flex:1;min-height:0;position:relative;}
+.view3d-stage canvas{display:block;width:100%;height:100%;touch-action:none;}
+.view3d-info{position:absolute;right:16px;top:70px;width:290px;max-height:calc(100% - 140px);overflow:auto;padding:12px;background:rgba(20,18,20,.94);border:1px solid var(--border);border-radius:8px;color:#f5f2f3;font-size:12px;}
+body[data-theme="light"] .view3d-info{background:rgba(255,255,255,.96);color:var(--text);}
+.view3d-info h3{margin:0 0 6px;font-size:13px;display:flex;justify-content:space-between;}
+.view3d-info h3 button{padding:0 7px;}
+.view3d-legend{position:absolute;left:16px;bottom:14px;padding:7px 10px;font-size:11px;color:#c9c1c5;background:rgba(20,18,20,.85);border:1px solid #413a3e;border-radius:5px;pointer-events:none;}
+@media (max-width:760px){
+  .view3d-help{display:none;}
+  .view3d-info{left:10px;right:10px;width:auto;top:auto;bottom:50px;max-height:45%;}
+  details.menu{flex:1 1 auto;}
+  .menu-button{display:block;text-align:center;min-height:36px;}
+}
+body[data-theme="light"] .workflow-hint{background:var(--panel-2);}
+body[data-theme="light"] .canvas-helper,body[data-theme="light"] .canvas-mode-badge{background:rgba(255,255,255,.92);border-color:var(--border);}
+body[data-theme="light"] .toast{background:rgba(255,255,255,.97);}
+
+/* ---------- botón Aprendé, nota de seguridad y pie ---------- */
+.learn-button{border-color:#40b78c;color:#40b78c;font-weight:600;}
+.learn-button:hover{background:#40b78c;color:#0a090a;border-color:#40b78c;}
+.safety-note{margin-top:14px;padding:9px 10px;border:1px solid #f0b45a;border-radius:6px;background:rgba(240,180,90,.08);color:var(--text);font-size:11px;line-height:1.5;}
+.palette-footer{margin-top:12px;font-size:11px;color:var(--muted);text-align:center;}
+.link-button{background:none;border:0;padding:2px;color:var(--muted);font-size:11px;text-decoration:underline;text-underline-offset:2px;}
+.link-button:hover{color:var(--text);}
+#challenge-panel.flash{animation:flash 1.4s ease;}
+@keyframes flash{0%,60%{box-shadow:0 0 0 3px #40b78c;}100%{box-shadow:0 0 0 0 transparent;}}
+.noscript{position:fixed;inset:auto 0 0 0;padding:14px;background:#b53a4b;color:#fff;text-align:center;z-index:100;}
+
+/* ---------- ventanas (modal) ---------- */
+.modal{position:fixed;inset:0;z-index:50;display:grid;place-items:center;padding:20px;background:rgba(10,9,10,.7);backdrop-filter:blur(3px);}
+.modal[hidden]{display:none;}
+.modal-card{width:min(560px,100%);max-height:calc(100vh - 40px);display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--border);border-radius:10px;box-shadow:0 20px 50px rgba(0,0,0,.45);}
+.modal.wide .modal-card{width:min(900px,100%);}
+.modal-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 18px;border-bottom:1px solid var(--border);}
+.modal-head h2{margin:0;font-size:16px;}
+.modal-body{padding:16px 18px 20px;overflow:auto;font-size:13.5px;line-height:1.65;}
+.modal-body h3{font-size:14px;margin:18px 0 6px;}
+.modal-body ul{padding-left:20px;margin:8px 0;}
+.modal-body li{margin:5px 0;}
+.modal-body a{color:var(--copper-bright);}
+.modal-body .small{font-size:11.5px;}
+.tabs{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;}
+.tab.active{background:var(--copper);border-color:var(--copper);color:#fff;}
+.about-list{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:12px 0;}
+.about-list div{padding:7px 9px;border-radius:5px;background:var(--panel-2);}
+.about-list dt{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);}
+.about-list dd{margin:0;font-weight:600;}
+.safety-inline{padding:8px 10px;border-left:3px solid #f0b45a;background:rgba(240,180,90,.08);}
+.license-list li{margin-bottom:8px;}
+.report-form{display:grid;gap:2px;margin-top:12px;}
+
+/* ---------- Aprendé ---------- */
+.lessons{display:grid;grid-template-columns:230px 1fr;gap:18px;}
+.lesson-nav{display:flex;flex-direction:column;gap:4px;}
+.lesson-link{text-align:left;background:transparent;border-color:transparent;font-size:12.5px;line-height:1.35;}
+.lesson-link:hover{background:var(--panel-2);}
+.lesson-link.active{background:var(--panel-2);border-color:var(--copper);font-weight:600;}
+.lesson h3{margin-top:0;font-size:18px;}
+.lesson p{margin:8px 0;}
+.formula{margin:10px 0;padding:10px;border-radius:6px;background:var(--bg);border:1px solid var(--border);font:700 17px 'JetBrains Mono',monospace;text-align:center;color:var(--copper-bright);}
+.analogy,.tip{padding:8px 11px;border-left:3px solid #3d8fd1;background:rgba(61,143,209,.08);border-radius:0 5px 5px 0;}
+.warn{padding:8px 11px;border-left:3px solid #d6505f;background:rgba(214,80,95,.08);border-radius:0 5px 5px 0;}
+.lesson-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px;}
+.lesson-pager{display:flex;justify-content:space-between;margin-top:16px;padding-top:12px;border-top:1px solid var(--border);}
+
+@media (max-width:760px){
+  .lessons{grid-template-columns:1fr;}
+  .lesson-nav{flex-direction:row;overflow-x:auto;padding-bottom:6px;}
+  .lesson-link{flex:none;max-width:200px;}
+  .modal{padding:8px;}
+  .about-list{grid-template-columns:1fr;}
+}
+
+/* ---------- reporte imprimible ---------- */
+.print-report{display:none;}
+@media print{
+  @page{size:A4;margin:14mm;}
+  html,body{height:auto;overflow:visible;background:#fff!important;color:#111!important;}
+  body.printing-report > *:not(#print-report){display:none!important;}
+  body.printing-report #print-report{display:block;font-family:'Inter',sans-serif;font-size:11pt;color:#111;}
+  body:not(.printing-report) .topbar,body:not(.printing-report) .palette,body:not(.printing-report) .side-panel,body:not(.printing-report) .canvas-helper{display:none!important;}
+  body:not(.printing-report) .app{display:block;height:auto;}
+  body:not(.printing-report) .canvas-wrap{height:auto;}
+  .print-report h1{font-size:18pt;margin:0 0 4px;}
+  .print-report header p{margin:0;color:#555;}
+  .print-report h2{font-size:12.5pt;margin:16px 0 6px;border-bottom:1px solid #ccc;padding-bottom:3px;}
+  .print-report table{width:100%;border-collapse:collapse;}
+  .print-report th,.print-report td{border:1px solid #bbb;padding:5px 7px;text-align:left;font-size:10pt;}
+  .print-report th{background:#eee;}
+  .print-report .center{text-align:center;}
+  .print-report .report-head td{border:0;padding:8px 0;}
+  .print-report .report-circuit{text-align:center;border:1px solid #ccc;padding:4mm;}
+  .print-report .report-circuit svg{width:auto;max-width:100%;height:auto;max-height:80mm;}
+  .print-report h2,.print-report table{break-inside:avoid;}
+  .print-report .report-circuit .flow-path{display:none;}
+  .print-report .report-lines{height:24mm;background:repeating-linear-gradient(#fff 0 8mm,#bbb 8mm calc(8mm + 1px));}
+  .print-report footer{margin-top:14px;font-size:8.5pt;color:#777;}
 }

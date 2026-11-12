@@ -1,11 +1,19 @@
 const TYPES = {
   resistor:{ name:'Resistencia', unit:'Ω', valueLabel:'Resistencia', default:100, w:90, h:40 },
   battery:{ name:'Fuente de voltaje', unit:'V', valueLabel:'Voltaje', default:9, w:90, h:40 },
-  bulb:{ name:'Lámpara / LED', unit:'V', valueLabel:'Voltaje nominal', default:2, defaultResistance:30, w:90, h:40 },
+  potentiometer:{ name:'Potenciómetro', unit:'Ω', valueLabel:'Resistencia máxima', default:1000, w:90, h:40 },
+  bulb:{ name:'Lámpara', unit:'V', valueLabel:'Voltaje nominal', default:6, defaultResistance:30, w:90, h:40 },
+  led:{ name:'LED', unit:'V', valueLabel:'Caída directa Vf', default:2, w:90, h:40 },
   switch:{ name:'Interruptor', unit:'', valueLabel:'Estado', default:1, w:90, h:40 },
-  ammeter:{ name:'Amperímetro', unit:'A', valueLabel:'Lectura', default:0, w:90, h:40 },
+  ammeter:{ name:'Amperímetro', unit:'A', valueLabel:null, default:0, w:90, h:40 },
+  voltmeter:{ name:'Voltímetro', unit:'V', valueLabel:null, default:0, w:90, h:40 },
   ground:{ name:'Tierra / Nodo', unit:'', valueLabel:null, default:0, w:20, h:20 }
 };
+const LED_COLORS = { rojo:'#ff3b3b', verde:'#3bff7a', azul:'#3b8bff', amarillo:'#ffd23b', blanco:'#f4f4ff' };
+const LED_SERIES_R = 10;        // resistencia interna del LED encendido (Ω)
+const LED_MAX_CURRENT = 0.02;   // corriente nominal de un LED común (20 mA)
+const AMMETER_R = 0.01, VOLTMETER_R = 1e7;
+let liveSimulation = true;
 let components = [];
 let wires = [];
 let idCounter = 1;
@@ -37,6 +45,8 @@ function symbolColor(){ return document.body.dataset.theme === 'light' ? '#201d2
 function normalizeComponent(comp){
   comp.rotation = ((Number(comp.rotation) || 0) % 360 + 360) % 360;
   if(comp.type === 'bulb' && !Number.isFinite(Number(comp.resistance))) comp.resistance = TYPES.bulb.defaultResistance;
+  if(comp.type === 'potentiometer' && !Number.isFinite(Number(comp.position))) comp.position = 50;
+  if(comp.type === 'led' && !LED_COLORS[comp.color]) comp.color = 'rojo';
   return comp;
 }
 
@@ -111,10 +121,16 @@ function commitHistory(){
   history.push(state);
   if(history.length > 60){ history.shift(); }
   historyIndex = history.length - 1;
-  simulation = null;
+  refreshSimulation();
   persistCircuit();
   updateHistoryButtons();
   renderSimulation();
+}
+
+// Con "simulación en vivo" el circuito se recalcula solo después de cada cambio.
+function refreshSimulation(){
+  if(liveSimulation && components.length) simulation = analyseCircuit();
+  else simulation = null;
 }
 
 function restoreHistory(index){
@@ -127,6 +143,7 @@ function restoreHistory(index){
   selectedWireId = null;
   pendingTerminal = null;
   historyIndex = index;
+  refreshSimulation();
   persistCircuit();
   updateConnectionUI();
   render();
@@ -157,19 +174,46 @@ function svgPoint(evt){
 }
 
 // ---------- symbol drawing ----------
-function symbolInner(type, comp){
+function symbolInner(type, comp, sim){
   const c = symbolColor();
   switch(type){
     case 'resistor':
       return `<path d="M0 20 H14 L20 6 L28 34 L36 6 L44 34 L52 6 L60 20 H90" stroke="${c}" stroke-width="2.2" fill="none"/>`;
+    case 'potentiometer': {
+      const knobX = 14 + (clamp(Number(comp.position) || 0, 0, 100) / 100) * 46;
+      return `<path d="M0 20 H14 L20 6 L28 34 L36 6 L44 34 L52 6 L60 20 H90" stroke="${c}" stroke-width="2.2" fill="none"/>
+              <path d="M18 38 L66 0 M66 0 L57 2 M66 0 L63 9" stroke="#f0b45a" stroke-width="1.8" fill="none"/>
+              <circle cx="${knobX}" cy="20" r="3" fill="#f0b45a"/>`;
+    }
+    case 'led': {
+      const color = LED_COLORS[comp.color] || LED_COLORS.rojo;
+      const glow = sim && !sim.burned ? clamp(sim.brightness || 0, 0, 1) : 0;
+      const body = sim && sim.burned ? '#555' : c;
+      return `${glow > 0.02 ? `<circle cx="45" cy="20" r="22" fill="${color}" opacity="${(0.15 + glow * 0.45).toFixed(2)}" filter="url(#glow)"/>` : ''}
+              <path d="M0 20 H34 M56 20 H90" stroke="${c}" stroke-width="2.2"/>
+              <path d="M34 8 L34 32 L54 20 Z" fill="${glow > 0.02 ? color : 'none'}" stroke="${body}" stroke-width="2"/>
+              <path d="M56 8 V32" stroke="${body}" stroke-width="2.4"/>
+              <path d="M44 4 L52 -4 M50 6 L58 -2 M52 -4 L48 -3 M52 -4 L51 0 M58 -2 L54 -1 M58 -2 L57 2" stroke="${color}" stroke-width="1.4" fill="none"/>
+              ${sim && sim.burned ? `<path d="M36 6 L54 34 M54 6 L36 34" stroke="#d6505f" stroke-width="2.4"/>` : ''}`;
+    }
+    case 'voltmeter':
+      return `<path d="M0 20 H24" stroke="${c}" stroke-width="2.2"/>
+              <circle cx="45" cy="20" r="18" stroke="${c}" stroke-width="2.2" fill="none"/>
+              <text x="45" y="26" font-size="16" font-weight="700" fill="${c}" font-family="JetBrains Mono, monospace" text-anchor="middle">V</text>
+              <text x="14" y="12" font-size="10" fill="#d6505f" font-family="JetBrains Mono, monospace" text-anchor="middle">+</text>
+              <path d="M66 20 H90" stroke="${c}" stroke-width="2.2"/>`;
     case 'battery':
       return `<style>style + path + text{fill:#aaa2a6}</style><path d="M0 20 H30 M30 6 V34 M40 14 V26 M40 20 H90" stroke="${c}" stroke-width="2.2" fill="none"/>
               <text x="35" y="46" font-size="9" fill="#8798a8" font-family="JetBrains Mono, monospace" text-anchor="middle">+  −</text>`;
-    case 'bulb':
-      return `<path d="M0 20 H24" stroke="${c}" stroke-width="2.2"/>
-              <circle cx="45" cy="20" r="18" stroke="${c}" stroke-width="2.2" fill="none"/>
-              <path d="M33 8 L57 32 M57 8 L33 32" stroke="${c}" stroke-width="1.6"/>
+    case 'bulb': {
+      const glow = sim && !sim.burned ? clamp(sim.brightness || 0, 0, 1) : 0;
+      const cross = sim && sim.burned ? '#d6505f' : c;
+      return `${glow > 0.02 ? `<circle cx="45" cy="20" r="${(20 + glow * 10).toFixed(1)}" fill="#ffd36b" opacity="${(0.12 + glow * 0.5).toFixed(2)}" filter="url(#glow)"/>` : ''}
+              <path d="M0 20 H24" stroke="${c}" stroke-width="2.2"/>
+              <circle cx="45" cy="20" r="18" stroke="${c}" stroke-width="2.2" fill="${glow > 0.02 ? `rgba(255,211,107,${(glow * 0.85).toFixed(2)})` : 'none'}"/>
+              ${sim && sim.burned ? `<path d="M33 8 L43 18 M47 22 L57 32 M57 8 L47 18 M43 22 L33 32" stroke="${cross}" stroke-width="1.8"/>` : `<path d="M33 8 L57 32 M57 8 L33 32" stroke="${cross}" stroke-width="1.6"/>`}
               <path d="M66 20 H90" stroke="${c}" stroke-width="2.2"/>`;
+    }
     case 'switch':
       return `<path d="M0 20 H18" stroke="${c}" stroke-width="2.2"/>
               <circle cx="20" cy="20" r="3.5" fill="${c}"/>
@@ -194,8 +238,16 @@ function terminals(type){
 
 function valueText(comp){
   const t = TYPES[comp.type];
+  const sim = simulation && simulation.components ? simulation.components[comp.id] : null;
   if(comp.type === 'switch') return comp.value ? 'cerrado' : 'abierto';
   if(comp.type === 'ground') return '';
+  if(comp.type === 'ammeter') return sim ? formatElectrical(Math.abs(sim.current), 'A') : 'A = ?';
+  if(comp.type === 'voltmeter') return sim ? formatElectrical(sim.voltage, 'V') : 'V = ?';
+  if(comp.type === 'potentiometer') return formatElectrical(potResistance(comp), 'Ω') + ' (' + Math.round(comp.position) + '%)';
+  if(comp.type === 'led') return comp.color + ' · ' + comp.value + ' V';
+  if(comp.type === 'bulb') return comp.value + ' V · ' + comp.resistance + ' Ω';
+  if(comp.type === 'resistor') return formatElectrical(Number(comp.value), 'Ω');
+  if(comp.type === 'battery') return comp.value + ' V';
   return `${comp.value}${t.unit}`;
 }
 
@@ -310,6 +362,18 @@ function render(){
     if(w.id === selectedWireId) line.classList.add('selected');
     wireLayer.appendChild(line);
 
+    // Animación de la corriente convencional (del + al −) según el sentido y el valor calculado.
+    const flow = wireCurrent(w);
+    if(flow && Math.abs(flow) > 1e-6){
+      const flowPath = document.createElementNS('http://www.w3.org/2000/svg','path');
+      flowPath.setAttribute('d', pathFromPoints(route));
+      flowPath.setAttribute('stroke-width', Math.max(2.5, w.width + 1.5));
+      flowPath.classList.add('flow-path');
+      flowPath.style.animationDuration = flowDuration(Math.abs(flow)) + 's';
+      if(flow < 0) flowPath.style.animationDirection = 'reverse';
+      wireLayer.appendChild(flowPath);
+    }
+
     if(w.label.trim()){
       const labelPosition = routeMidpoint(route);
       const label = document.createElementNS('http://www.w3.org/2000/svg','text');
@@ -376,7 +440,7 @@ function render(){
       hl.classList.add('selection-outline');
       g.appendChild(hl);
     }
-    g.innerHTML += symbolInner(comp.type, comp);
+    g.innerHTML += symbolInner(comp.type, comp, simResult);
     if(comp.type !== 'ground'){
       const label = document.createElementNS('http://www.w3.org/2000/svg','text');
       label.setAttribute('x', 45); label.setAttribute('y', -8);
@@ -392,16 +456,18 @@ function render(){
       valTxt.setAttribute('text-anchor','middle');
       valTxt.setAttribute('font-size','10.5');
       valTxt.setAttribute('font-family',"'JetBrains Mono', monospace");
-      valTxt.setAttribute('fill', '#7a1725');
+      const isMeter = comp.type === 'ammeter' || comp.type === 'voltmeter';
+      valTxt.setAttribute('fill', isMeter && simResult ? '#40b78c' : '#b53a4b');
+      if(isMeter) valTxt.setAttribute('font-weight', '700');
       valTxt.textContent = valueText(comp);
       g.appendChild(valTxt);
-      if(simResult && Number.isFinite(simResult.current)){
+      if(simResult && Number.isFinite(simResult.current) && !isMeter){
         const simTxt = document.createElementNS('http://www.w3.org/2000/svg','text');
         simTxt.setAttribute('x', 45); simTxt.setAttribute('y', 68);
         simTxt.setAttribute('text-anchor','middle'); simTxt.setAttribute('font-size','9');
         simTxt.setAttribute('font-family', 'JetBrains Mono, monospace');
         simTxt.setAttribute('fill', simResult.error ? '#d6505f' : '#40b78c');
-        simTxt.textContent = 'I ' + formatElectrical(simResult.current, 'A') + ' · P ' + formatElectrical(simResult.power, 'W');
+        simTxt.textContent = simResult.burned ? '¡QUEMADO!' : 'I ' + formatElectrical(Math.abs(simResult.current), 'A') + ' · P ' + formatElectrical(simResult.power, 'W');
         g.appendChild(simTxt);
       }
     }
@@ -440,7 +506,7 @@ function terminalWorldPos(ref){
 function formatElectrical(value, unit){
   if(!Number.isFinite(value)) return '—';
   const absolute = Math.abs(value);
-  if(absolute === 0) return '0 ' + unit;
+  if(absolute < 1e-9) return '0 ' + unit;
   const prefixes = absolute >= 1000000 ? [1000000, 'M'] : absolute >= 1000 ? [1000, 'k'] : absolute < 0.001 ? [0.000001, 'µ'] : absolute < 1 ? [0.001, 'm'] : [1, ''];
   const scaled = value / prefixes[0];
   return scaled.toLocaleString('es-AR', {maximumFractionDigits:3}) + ' ' + prefixes[1] + unit;
@@ -476,11 +542,19 @@ function solveLinearSystem(matrix, vector){
   return augmented.map(function(row){ return row[size]; });
 }
 
-function componentResistance(comp){
+function potResistance(comp){
+  return Math.max((Number(comp.value) || 0) * clamp(Number(comp.position) || 0, 0, 100) / 100, 0.5);
+}
+
+// Resistencia que ve el simulador. null = el componente no conduce (abierto).
+function componentResistance(comp, state){
+  if(state && state.burned.has(comp.id)) return null;
   if(comp.type === 'resistor') return Math.max(Number(comp.value) || 0.001, 0.001);
+  if(comp.type === 'potentiometer') return potResistance(comp);
   if(comp.type === 'bulb') return Math.max(Number(comp.resistance) || TYPES.bulb.defaultResistance, 0.001);
-  if(comp.type === 'switch' && comp.value) return 0.01;
-  if(comp.type === 'ammeter') return 0.01;
+  if(comp.type === 'switch') return comp.value ? 0.01 : null;
+  if(comp.type === 'ammeter') return AMMETER_R;
+  if(comp.type === 'voltmeter') return VOLTMETER_R;
   return null;
 }
 
@@ -502,17 +576,8 @@ function createSimulationModel(){
   return {componentNodes:componentNodes, nodeCount:roots.size};
 }
 
-function analyseCircuit(){
-  const batteries = components.filter(function(comp){ return comp.type === 'battery'; });
-  if(!batteries.length) return {ok:false, components:{}, messages:[{type:'error', text:'Agregá y conectá una fuente de voltaje para iniciar la simulación.'}]};
-  const model = createSimulationModel();
-  const primary = batteries[0];
-  const primaryNodes = model.componentNodes.get(primary.id);
-  if(!primaryNodes || primaryNodes[0] === primaryNodes[1]){
-    const results = {}; results[primary.id] = {error:true};
-    return {ok:false, components:results, messages:[{type:'error', text:'Cortocircuito: ambos terminales de la fuente están unidos por cables.'}]};
-  }
-
+// Resuelve la red una vez (análisis nodal modificado) para un estado dado de LEDs y componentes quemados.
+function solveNetwork(model, primary, primaryNodes, state){
   const adjacency = Array.from({length:model.nodeCount}, function(){ return []; });
   const activeComponents = [];
   function link(a, b, comp, kind){
@@ -524,7 +589,8 @@ function analyseCircuit(){
     const nodes = model.componentNodes.get(comp.id);
     if(!nodes || nodes.length < 2) return;
     if(comp.type === 'battery'){ link(nodes[0], nodes[1], comp, 'source'); activeComponents.push(comp); }
-    else if(componentResistance(comp) !== null){ link(nodes[0], nodes[1], comp, 'load'); activeComponents.push(comp); }
+    else if(comp.type === 'led'){ if(!state.burned.has(comp.id)){ link(nodes[0], nodes[1], comp, 'load'); activeComponents.push(comp); } }
+    else if(componentResistance(comp, state) !== null){ link(nodes[0], nodes[1], comp, comp.type === 'voltmeter' ? 'meter' : 'load'); activeComponents.push(comp); }
   });
 
   const includedNodes = new Set([primaryNodes[0]]);
@@ -544,21 +610,33 @@ function analyseCircuit(){
   const sourceComponents = includedComponents.filter(function(comp){ return comp.type === 'battery'; });
   const voltageCount = nodeIndexes.size;
   const matrixSize = voltageCount + sourceComponents.length;
-  if(!matrixSize) return {ok:false, components:{}, messages:[{type:'error', text:'No se pudo formar una red eléctrica válida.'}]};
+  if(!matrixSize) return {error:'No se pudo formar una red eléctrica válida.'};
   const matrix = Array.from({length:matrixSize}, function(){ return Array(matrixSize).fill(0); });
   const vector = Array(matrixSize).fill(0);
   const nodeIndex = function(node){ return node === referenceNode ? -1 : nodeIndexes.get(node); };
   const addMatrix = function(row, column, value){ if(row >= 0 && column >= 0) matrix[row][column] += value; };
-  function stampResistance(a, b, resistance){
-    const conductance = 1 / resistance, ia = nodeIndex(a), ib = nodeIndex(b);
+  const addVector = function(row, value){ if(row >= 0) vector[row] += value; };
+  function stampConductance(a, b, conductance){
+    const ia = nodeIndex(a), ib = nodeIndex(b);
     addMatrix(ia, ia, conductance); addMatrix(ib, ib, conductance);
     addMatrix(ia, ib, -conductance); addMatrix(ib, ia, -conductance);
   }
   includedComponents.forEach(function(comp){
     const nodes = model.componentNodes.get(comp.id);
-    const resistance = componentResistance(comp);
-    if(resistance !== null) stampResistance(nodes[0], nodes[1], resistance);
+    if(comp.type === 'led'){
+      // Modelo por tramos: encendido = fuente Vf + resistencia interna; apagado = casi abierto.
+      if(state.ledOn.get(comp.id)){
+        const g = 1 / LED_SERIES_R, vf = Number(comp.value) || 2;
+        stampConductance(nodes[0], nodes[1], g);
+        addVector(nodeIndex(nodes[0]), g * vf); addVector(nodeIndex(nodes[1]), -g * vf);
+      } else stampConductance(nodes[0], nodes[1], 1e-9);
+      return;
+    }
+    const resistance = componentResistance(comp, state);
+    if(resistance !== null) stampConductance(nodes[0], nodes[1], 1 / resistance);
   });
+  // Conductancia mínima a referencia para nodos flotantes (evita matrices singulares).
+  nodeIndexes.forEach(function(index){ matrix[index][index] += 1e-12; });
   sourceComponents.forEach(function(comp, sourceIndex){
     const nodes = model.componentNodes.get(comp.id), ia = nodeIndex(nodes[0]), ib = nodeIndex(nodes[1]), row = voltageCount + sourceIndex;
     addMatrix(ia, row, 1); addMatrix(ib, row, -1);
@@ -566,70 +644,181 @@ function analyseCircuit(){
     vector[row] = Number(comp.value) || 0;
   });
   const solution = solveLinearSystem(matrix, vector);
-  if(!solution){
-    return {ok:false, components:{}, messages:[{type:'error', text:'La red no tiene una solución DC estable. Revisá fuentes contrapuestas o conexiones incompletas.'}]};
-  }
-  const voltageAt = function(node){ const index = nodeIndex(node); return index < 0 ? 0 : solution[index]; };
-  const results = {};
+  if(!solution) return {error:'La red no tiene una solución DC estable. Revisá fuentes contrapuestas o conexiones incompletas.'};
+  const voltageAt = function(node){ const index = nodeIndex(node); return index === undefined || index < 0 ? 0 : solution[index]; };
+  const values = {};
   includedComponents.forEach(function(comp){
     const nodes = model.componentNodes.get(comp.id), voltage = voltageAt(nodes[0]) - voltageAt(nodes[1]);
     let current = 0;
-    const resistance = componentResistance(comp);
-    if(resistance !== null) current = voltage / resistance;
-    else if(comp.type === 'battery') current = solution[voltageCount + sourceComponents.indexOf(comp)] || 0;
-    results[comp.id] = {voltage:voltage, current:current, power:Math.abs(voltage * current)};
+    if(comp.type === 'battery') current = solution[voltageCount + sourceComponents.indexOf(comp)] || 0;
+    else if(comp.type === 'led') current = state.ledOn.get(comp.id) ? (voltage - (Number(comp.value) || 2)) / LED_SERIES_R : voltage * 1e-9;
+    else current = voltage / componentResistance(comp, state);
+    values[comp.id] = {voltage:voltage, current:current};
   });
-  const messages = [];
-  if(!ground) messages.push({type:'info', text:'Sin tierra: se tomó el terminal negativo de la primera fuente como referencia de 0 V.'});
+  return {adjacency:adjacency, includedComponents:includedComponents, ground:ground, voltageAt:voltageAt, values:values, model:model};
+}
+
+function analyseCircuit(){
+  const batteries = components.filter(function(comp){ return comp.type === 'battery'; });
+  if(!batteries.length) return {ok:false, components:{}, messages:[{type:'error', text:'Agregá y conectá una fuente de voltaje para iniciar la simulación.'}]};
+  const model = createSimulationModel();
+  const primary = batteries[0];
+  const primaryNodes = model.componentNodes.get(primary.id);
+  if(!primaryNodes || primaryNodes[0] === primaryNodes[1]){
+    const results = {}; results[primary.id] = {error:true};
+    return {ok:false, components:results, messages:[{type:'error', text:'Cortocircuito: ambos terminales de la fuente están unidos por cables.'}]};
+  }
+
+  const state = {burned:new Set(), ledOn:new Map()};
+  components.forEach(function(comp){ if(comp.type === 'led') state.ledOn.set(comp.id, true); });
+  const burnNotes = [];
+  let net = null;
+  for(let iteration = 0; iteration < 40; iteration++){
+    net = solveNetwork(model, primary, primaryNodes, state);
+    if(net.error) return {ok:false, components:{}, messages:[{type:'error', text:net.error}]};
+    // 1) Ajustar el estado de cada LED (conduce sólo en directa y por encima de Vf).
+    let changed = false;
+    net.includedComponents.forEach(function(comp){
+      if(comp.type !== 'led') return;
+      const value = net.values[comp.id], on = state.ledOn.get(comp.id), vf = Number(comp.value) || 2;
+      if(on && value.current < 0){ state.ledOn.set(comp.id, false); changed = true; }
+      else if(!on && value.voltage > vf + 1e-6){ state.ledOn.set(comp.id, true); changed = true; }
+    });
+    if(changed) continue;
+    // 2) Quemar lámparas con sobretensión y LEDs con sobrecorriente: se abren y se recalcula.
+    let burnedNow = false;
+    net.includedComponents.forEach(function(comp){
+      const value = net.values[comp.id];
+      if(comp.type === 'bulb' && Math.abs(value.voltage) > (Number(comp.value) || 1) * 1.5){
+        state.burned.add(comp.id); burnedNow = true;
+        burnNotes.push('La lámpara “' + comp.label + '” se quemó: recibió ' + formatElectrical(Math.abs(value.voltage), 'V') + ' y su voltaje nominal es ' + comp.value + ' V. El filamento se cortó y esa rama quedó abierta.');
+      }
+      if(comp.type === 'led' && value.current > LED_MAX_CURRENT * 2.5){
+        state.burned.add(comp.id); burnedNow = true;
+        const vf = Number(comp.value) || 2, source = Math.abs(Number(primary.value) || 0);
+        const suggested = source > vf ? Math.ceil((source - vf) / LED_MAX_CURRENT) : 0;
+        burnNotes.push('El LED “' + comp.label + '” se quemó: le pasaban ' + formatElectrical(value.current, 'A') + ' (máximo ~20 mA).' + (suggested ? ' Poné una resistencia en serie de al menos R = (' + source + ' V − ' + vf + ' V) ÷ 0,02 A ≈ ' + suggested + ' Ω.' : ''));
+      }
+    });
+    if(burnedNow) continue;
+    break;
+  }
+
+  const results = {};
+  net.includedComponents.forEach(function(comp){
+    const value = net.values[comp.id];
+    const result = {voltage:value.voltage, current:value.current, power:Math.abs(value.voltage * value.current)};
+    if(comp.type === 'bulb'){
+      const nominal = Number(comp.value) || 1;
+      result.brightness = clamp(Math.abs(value.voltage) / nominal, 0, 1.5);
+    }
+    if(comp.type === 'led'){
+      result.on = state.ledOn.get(comp.id);
+      result.brightness = result.on ? clamp(value.current / LED_MAX_CURRENT, 0, 1.5) : 0;
+      result.power = Math.abs(value.voltage * value.current);
+    }
+    results[comp.id] = result;
+  });
+  state.burned.forEach(function(id){
+    const comp = findComponent(id), nodes = model.componentNodes.get(id);
+    const voltage = nodes ? net.voltageAt(nodes[0]) - net.voltageAt(nodes[1]) : 0;
+    results[id] = {voltage:voltage, current:0, power:0, burned:true, error:true, brightness:0};
+    if(comp && comp.type === 'led') results[id].on = false;
+  });
+
+  const messages = burnNotes.map(function(text){ return {type:'error', text:text}; });
+  if(!net.ground) messages.push({type:'info', text:'Sin tierra: se tomó el terminal negativo de la primera fuente como referencia de 0 V.'});
   const returnQueue = [primaryNodes[0]], visited = new Set([primaryNodes[0]]);
   while(returnQueue.length){
     const node = returnQueue.shift();
-    adjacency[node].forEach(function(edge){
-      if(edge.kind === 'source' || visited.has(edge.node)) return;
+    net.adjacency[node].forEach(function(edge){
+      if(edge.kind === 'source' || edge.kind === 'meter' || visited.has(edge.node)) return;
       visited.add(edge.node); returnQueue.push(edge.node);
     });
   }
   const openCircuit = !visited.has(primaryNodes[1]);
   if(openCircuit){
     results[primary.id].warning = true;
-    messages.push({type:'warning', text:'Circuito abierto: la fuente no tiene un camino de retorno a través de una carga.'});
+    messages.push({type:'warning', text:'Circuito abierto: la fuente no tiene un camino de retorno a través de una carga. No circula corriente.'});
   }
   const primaryResult = results[primary.id];
   if(primaryResult && Math.abs(primaryResult.current) > 10){
     primaryResult.error = true;
     messages.push({type:'error', text:'Corriente muy alta: posible cortocircuito o resistencia demasiado baja (' + formatElectrical(Math.abs(primaryResult.current), 'A') + ').'});
-    includedComponents.forEach(function(comp){ if(comp.type === 'switch' || comp.type === 'ammeter') results[comp.id].warning = true; });
+    net.includedComponents.forEach(function(comp){ if(comp.type === 'switch' || comp.type === 'ammeter') results[comp.id].warning = true; });
   }
-  const loads = includedComponents.filter(function(comp){ return comp.type === 'resistor' || comp.type === 'bulb'; });
-  if(!loads.length) messages.push({type:'warning', text:'No hay una carga resistiva en el circuito. Agregá una resistencia o lámpara para limitar la corriente.'});
-  return {ok:true, components:results, messages:messages, source:primary, totalCurrent:Math.abs(primaryResult.current), totalPower:Math.abs(primaryResult.power), loadedComponents:loads.length};
+  net.includedComponents.forEach(function(comp){
+    const result = results[comp.id];
+    if(comp.type === 'ammeter' && Math.abs(result.current) > 2 && Math.abs(result.voltage) > 0.5) messages.push({type:'warning', text:'El amperímetro “' + comp.label + '” parece estar en paralelo: tiene resistencia casi nula y provoca un corto. Conectalo en serie.'});
+    if(comp.type === 'led' && !result.on && result.voltage < -0.1) messages.push({type:'info', text:'El LED “' + comp.label + '” está en inversa: no conduce. Dalo vuelta (rotalo 180°) para que encienda.'});
+    if(comp.type === 'bulb' && result.brightness > 0.02 && result.brightness < 0.4) messages.push({type:'info', text:'La lámpara “' + comp.label + '” brilla poco: recibe ' + formatElectrical(Math.abs(result.voltage), 'V') + ' de sus ' + comp.value + ' V nominales.'});
+  });
+  const loads = net.includedComponents.filter(function(comp){ return ['resistor','bulb','potentiometer','led'].includes(comp.type); });
+  if(!loads.length && !state.burned.size) messages.push({type:'warning', text:'No hay una carga en el circuito. Agregá una resistencia, lámpara o LED para limitar la corriente.'});
+  const totalCurrent = Math.abs(primaryResult.current);
+  const equivalent = batteries.length === 1 && totalCurrent > 1e-9 ? Math.abs(Number(primary.value)) / totalCurrent : null;
+  return {ok:true, components:results, messages:messages, source:primary, totalCurrent:totalCurrent, totalPower:Math.abs(primaryResult.power), loadedComponents:loads.length, equivalentResistance:equivalent, burned:Array.from(state.burned)};
+}
+
+// Corriente que circula por un cable (positivo = de a → b). Se toma el extremo que tiene un solo cable conectado.
+function wireCurrent(wire){
+  if(!simulation || !simulation.ok) return 0;
+  function degree(ref){ return wires.filter(function(w){ return refsMatch(w.a, ref) || refsMatch(w.b, ref); }).length; }
+  function inflow(ref){
+    const comp = findComponent(ref.compId), result = simulation.components[ref.compId];
+    if(!comp || !result || comp.type === 'ground' || !Number.isFinite(result.current)) return null;
+    return ref.tIdx === 0 ? result.current : -result.current;
+  }
+  if(degree(wire.b) === 1){ const value = inflow(wire.b); if(value !== null) return value; }
+  if(degree(wire.a) === 1){ const value = inflow(wire.a); if(value !== null) return -value; }
+  return 0;
+}
+
+function flowDuration(current){
+  const milliamps = current * 1000;
+  return clamp(1.4 / (0.6 + Math.log10(1 + milliamps)), 0.18, 3).toFixed(2);
 }
 
 function renderSimulation(){
   const panel = document.getElementById('simulation-panel');
+  const header = `<h2>Simulación DC <label class="live-toggle" title="Recalcular automáticamente con cada cambio"><input type="checkbox" id="live-sim" ${liveSimulation ? 'checked' : ''}> En vivo</label></h2>`;
+  const bind = function(){
+    document.getElementById('live-sim').addEventListener('change', function(e){
+      liveSimulation = e.target.checked;
+      try { localStorage.setItem(STORAGE_KEY + '-live', liveSimulation ? '1' : '0'); } catch(error) {}
+      refreshSimulation(); render(); renderProps(); renderSimulation();
+      showToast(liveSimulation ? 'Simulación en vivo activada: el circuito se recalcula solo.' : 'Simulación en vivo desactivada. Usá el botón Simular.');
+    });
+  };
   if(!simulation){
-    panel.innerHTML = `<h2>Simulación DC</h2><div class="sim-empty">Armá un circuito con una fuente y presioná <strong>Simular</strong>. Se calculan tensiones, corriente y potencia para redes resistivas.</div>`;
+    panel.innerHTML = header + `<div class="sim-empty">Armá un circuito con una fuente${liveSimulation ? '; los resultados aparecen solos' : ' y presioná <strong>Simular</strong>'}. Se calculan tensiones, corriente y potencia.</div>`;
+    bind();
     return;
   }
   const messages = simulation.messages.map(function(message){ return `<div class="sim-message ${message.type}">${message.text}</div>`; }).join('');
   if(!simulation.ok){
-    panel.innerHTML = `<h2>Simulación DC</h2>${messages}<div class="sim-empty">Corregí la conexión indicada y probá nuevamente.</div>`;
+    panel.innerHTML = header + `${messages}<div class="sim-empty">Corregí la conexión indicada y probá nuevamente.</div>`;
+    bind();
     return;
   }
   const rows = Object.keys(simulation.components).map(function(id){
     const comp = findComponent(Number(id)), result = simulation.components[id];
-    if(!comp || (comp.type !== 'resistor' && comp.type !== 'bulb' && comp.type !== 'ammeter')) return '';
-    return `<div class="sim-row"><span>${escapeHTML(comp.label)}</span><b>${formatElectrical(result.voltage, 'V')}</b><b>${formatElectrical(result.current, 'A')}</b></div>`;
+    if(!comp || !['resistor','potentiometer','bulb','led','ammeter','voltmeter'].includes(comp.type)) return '';
+    const shownVoltage = comp.type === 'voltmeter' || comp.type === 'led' ? result.voltage : Math.abs(result.voltage);
+    return `<div class="sim-row${result.burned ? ' burned' : ''}"><span>${escapeHTML(comp.label)}</span><b>${formatElectrical(shownVoltage, 'V')}</b><b>${result.burned ? 'quemado' : formatElectrical(Math.abs(result.current), 'A')}</b></div>`;
   }).join('');
-  panel.innerHTML = `<h2>Simulación DC</h2><div class="sim-summary"><div><span>Fuente</span><b>${formatElectrical(Number(simulation.source.value), 'V')}</b></div><div><span>Corriente</span><b>${formatElectrical(simulation.totalCurrent, 'A')}</b></div><div><span>Potencia</span><b>${formatElectrical(simulation.totalPower, 'W')}</b></div></div>${messages}${rows ? `<div class="sim-table-label">Cargas: tensión · corriente</div><div class="sim-results">${rows}</div>` : ''}`;
+  const equivalent = simulation.equivalentResistance !== null && Number.isFinite(simulation.equivalentResistance) ? `<div class="sim-equivalent"><span>Resistencia equivalente</span><b>R<sub>eq</sub> = ${formatElectrical(Math.abs(Number(simulation.source.value)), 'V')} ÷ ${formatElectrical(simulation.totalCurrent, 'A')} = ${formatElectrical(simulation.equivalentResistance, 'Ω')}</b></div>` : '';
+  panel.innerHTML = header + `<div class="sim-summary"><div><span>Fuente</span><b>${formatElectrical(Number(simulation.source.value), 'V')}</b></div><div><span>Corriente</span><b>${formatElectrical(simulation.totalCurrent, 'A')}</b></div><div><span>Potencia</span><b>${formatElectrical(simulation.totalPower, 'W')}</b></div></div>${equivalent}${messages}${rows ? `<div class="sim-table-label">Componentes: tensión · corriente</div><div class="sim-results">${rows}</div>` : ''}<div class="sim-tip">Tocá un componente para ver <strong>cómo se calculó</strong> su valor.</div>`;
+  bind();
 }
 
 function runSimulation(){
-  simulation = analyseCircuit();
+  simulation = components.length ? analyseCircuit() : null;
   render();
   renderProps();
   renderSimulation();
-  showToast(simulation.ok ? 'Simulación actualizada.' : 'La simulación encontró una conexión a revisar.');
+  if(!simulation) showToast('Agregá componentes para simular.');
+  else showToast(simulation.ok ? 'Simulación actualizada.' : 'La simulación encontró una conexión a revisar.');
 }
 
 // ---------- interaction ----------
@@ -889,32 +1078,162 @@ function renderProps(){
   if(comp.type === 'switch'){
     extra = `<div class="field"><label>Estado</label><select id="p-value"><option value="1" ${comp.value ? 'selected' : ''}>Cerrado (conduce)</option><option value="0" ${!comp.value ? 'selected' : ''}>Abierto (no conduce)</option></select></div>`;
   } else if(type.valueLabel){
-    extra = `<div class="field"><label>${type.valueLabel} (${type.unit})</label><input type="number" id="p-value" step="any" value="${comp.value}"></div>`;
+    extra = `<div class="field"><label>${type.valueLabel} (${type.unit})</label><input type="number" id="p-value" step="any" min="0" value="${comp.value}"></div>`;
   }
-  if(comp.type === 'bulb') extra += `<div class="field"><label>Resistencia interna (Ω)</label><input type="number" id="p-bulb-resistance" min="0.001" step="any" value="${comp.resistance}"></div>`;
-  const simulationInfo = simulation && simulation.components && simulation.components[comp.id] ? simulation.components[comp.id] : null;
-  const calculated = simulationInfo && Number.isFinite(simulationInfo.current) ? `<div class="simulation-readout"><span>Simulación</span><b>${formatElectrical(simulationInfo.voltage, 'V')} · ${formatElectrical(simulationInfo.current, 'A')} · ${formatElectrical(simulationInfo.power, 'W')}</b></div>` : '';
-  panel.innerHTML = `<div class="comp-title">${type.name} <span class="tag">#${comp.id}</span></div>${type.valueLabel ? `<div class="field"><label>Etiqueta</label><input type="text" id="p-label" value="${escapeHTML(comp.label)}"></div>` : ''}${extra}${calculated}<div class="position-readout">Posición: ${comp.x}, ${comp.y} · Rotación: ${comp.rotation}°</div><div class="row-buttons"><button id="p-rotate-left" title="Rotar 90° a la izquierda">↺ Rotar</button><button id="p-rotate-right" title="Rotar 90° a la derecha">Rotar ↻</button></div><div class="row-buttons"><button class="danger" id="p-delete">Eliminar</button><button id="p-deselect">Cerrar</button></div>`;
+  if(comp.type === 'potentiometer') extra += `<div class="field"><label>Posición del cursor <output id="p-pot-out">${Math.round(comp.position)}% · ${formatElectrical(potResistance(comp), 'Ω')}</output></label><input type="range" id="p-pot" min="0" max="100" step="1" value="${comp.position}"></div>`;
+  if(comp.type === 'bulb') extra += `<div class="field"><label>Resistencia del filamento (Ω)</label><input type="number" id="p-bulb-resistance" min="0.001" step="any" value="${comp.resistance}"></div><div class="field-note">Se quema si recibe más de 1,5 × su voltaje nominal.</div>`;
+  if(comp.type === 'led') extra += `<div class="field"><label>Color</label><select id="p-led-color">${Object.keys(LED_COLORS).map(function(name){ return `<option value="${name}" ${comp.color === name ? 'selected' : ''}>${name}</option>`; }).join('')}</select></div><div class="field-note">Terminal izquierdo = ánodo (+). Conduce sólo en un sentido y se quema con más de ~50 mA.</div>`;
+  if(comp.type === 'ammeter') extra += `<div class="field-note">La lectura se calcula sola al simular. Se conecta <strong>en serie</strong> (resistencia casi nula: ${AMMETER_R} Ω).</div>`;
+  if(comp.type === 'voltmeter') extra += `<div class="field-note">La lectura se calcula sola al simular. Se conecta <strong>en paralelo</strong> (resistencia muy alta: 10 MΩ). El terminal izquierdo es el +.</div>`;
+  if(comp.type === 'resistor') extra += `<div id="p-color-code">${colorCodeHTML(Number(comp.value))}</div>`;
+  panel.innerHTML = `<div class="comp-title">${type.name} <span class="tag">#${comp.id}</span></div>${comp.type !== 'ground' ? `<div class="field"><label>Etiqueta</label><input type="text" id="p-label" value="${escapeHTML(comp.label)}"></div>` : ''}${extra}<div id="p-sim-area">${simulationExplainHTML(comp)}</div><div class="position-readout">Posición: ${comp.x}, ${comp.y} · Rotación: ${comp.rotation}°</div><div class="row-buttons"><button id="p-rotate-left" title="Rotar 90° a la izquierda">↺ Rotar</button><button id="p-rotate-right" title="Rotar 90° a la derecha (R)">Rotar ↻</button></div><div class="row-buttons"><button id="p-duplicate" title="Duplicar (Ctrl + D)">Duplicar</button><button class="danger" id="p-delete">Eliminar</button><button id="p-deselect">Cerrar</button></div>`;
+  // Actualiza lienzo y resultados sin reconstruir el panel (así el campo no pierde el foco).
+  const liveUpdate = function(){
+    if(liveSimulation) simulation = analyseCircuit();
+    render(); renderSimulation();
+    const area = document.getElementById('p-sim-area');
+    if(area){ area.innerHTML = simulationExplainHTML(comp); bindExplainButtons(comp); }
+  };
   const labelInput = document.getElementById('p-label');
   if(labelInput){ labelInput.addEventListener('input', function(e){ comp.label = e.target.value; render(); }); labelInput.addEventListener('change', commitHistory); }
   const valueInput = document.getElementById('p-value');
   if(valueInput){
-    valueInput.addEventListener('input', function(e){ const value = comp.type === 'switch' ? Number(e.target.value) : Number(e.target.value); if(!Number.isNaN(value)) comp.value = value; render(); });
+    valueInput.addEventListener('input', function(e){
+      const value = Number(e.target.value);
+      if(e.target.value === '' || Number.isNaN(value)) return;
+      comp.value = comp.type === 'switch' ? value : Math.max(0, value);
+      if(comp.type === 'resistor'){ const code = document.getElementById('p-color-code'); if(code) code.innerHTML = colorCodeHTML(comp.value); }
+      if(comp.type === 'potentiometer'){ document.getElementById('p-pot-out').textContent = Math.round(comp.position) + '% · ' + formatElectrical(potResistance(comp), 'Ω'); }
+      liveUpdate();
+    });
     valueInput.addEventListener('change', commitHistory);
   }
+  const potInput = document.getElementById('p-pot');
+  if(potInput){
+    potInput.addEventListener('input', function(e){
+      comp.position = Number(e.target.value);
+      document.getElementById('p-pot-out').textContent = Math.round(comp.position) + '% · ' + formatElectrical(potResistance(comp), 'Ω');
+      liveUpdate();
+    });
+    potInput.addEventListener('change', commitHistory);
+  }
+  const ledColor = document.getElementById('p-led-color');
+  if(ledColor) ledColor.addEventListener('change', function(e){ comp.color = e.target.value; commitHistory(); render(); });
   const resistanceInput = document.getElementById('p-bulb-resistance');
   if(resistanceInput){
-    resistanceInput.addEventListener('input', function(e){ const resistance = Number(e.target.value); if(resistance > 0) comp.resistance = resistance; });
+    resistanceInput.addEventListener('input', function(e){ const resistance = Number(e.target.value); if(resistance > 0){ comp.resistance = resistance; liveUpdate(); } });
     resistanceInput.addEventListener('change', function(){ commitHistory(); render(); renderProps(); });
   }
+  bindExplainButtons(comp);
   document.getElementById('p-rotate-left').addEventListener('click', function(){ comp.rotation = (comp.rotation + 270) % 360; commitHistory(); render(); renderProps(); });
   document.getElementById('p-rotate-right').addEventListener('click', function(){ comp.rotation = (comp.rotation + 90) % 360; commitHistory(); render(); renderProps(); });
+  document.getElementById('p-duplicate').addEventListener('click', function(){ duplicateComponent(comp); });
   document.getElementById('p-delete').addEventListener('click', function(){ deleteComponent(comp); });
   document.getElementById('p-deselect').addEventListener('click', clearSelection);
 }
 
+function bindExplainButtons(comp){
+  const button = document.getElementById('p-to-triangle');
+  if(!button) return;
+  button.addEventListener('click', function(){
+    const result = simulation.components[comp.id];
+    const resistance = comp.type === 'potentiometer' ? potResistance(comp) : comp.type === 'bulb' ? Number(comp.resistance) : Number(comp.value);
+    selectTriangleVar('I');
+    document.getElementById('tri-input-1').value = Number(Math.abs(result.voltage).toPrecision(4));
+    document.getElementById('tri-input-2').value = Number(resistance.toPrecision(4));
+    document.getElementById('tri-calc-btn').click();
+    document.getElementById('tri-calc').scrollIntoView({behavior:'smooth', block:'center'});
+  });
+}
+
+// ---------- explicación paso a paso ----------
+function simulationExplainHTML(comp){
+  const result = simulation && simulation.ok && simulation.components ? simulation.components[comp.id] : null;
+  if(!result || !Number.isFinite(result.current)){
+    if(comp.type === 'ground') return '';
+    return simulation ? `<div class="explain muted">Este componente no forma parte del circuito simulado (revisá sus conexiones).</div>` : '';
+  }
+  const fV = function(v){ return formatElectrical(v, 'V'); }, fI = function(i){ return formatElectrical(i, 'A'); }, fR = function(r){ return formatElectrical(r, 'Ω'); }, fP = function(p){ return formatElectrical(p, 'W'); };
+  const V = Math.abs(result.voltage), I = Math.abs(result.current);
+  const head = `<div class="simulation-readout"><span>Simulación</span><b>${fV(result.voltage)} · ${fI(I)} · ${fP(result.power)}</b></div>`;
+  let steps = '';
+  let triangle = false;
+  if(result.burned){
+    steps = `<p><b>Está quemado.</b> Ya no conduce: es como un cable cortado, por eso esa rama quedó abierta.</p><p>Bajá la tensión o agregá una resistencia en serie y volvé a simular.</p>`;
+  } else if(comp.type === 'resistor' || comp.type === 'potentiometer' || comp.type === 'bulb'){
+    const R = comp.type === 'potentiometer' ? potResistance(comp) : comp.type === 'bulb' ? Number(comp.resistance) : Number(comp.value);
+    steps = `<p>1. Tensión entre sus terminales: <code>V = ${fV(V)}</code></p>
+             <p>2. Ley de Ohm: <code>I = V ÷ R = ${fV(V)} ÷ ${fR(R)} = ${fI(I)}</code></p>
+             <p>3. Potencia: <code>P = V × I = ${fV(V)} × ${fI(I)} = ${fP(result.power)}</code></p>`;
+    if(comp.type === 'bulb') steps += `<p>Brillo: recibe ${Math.round(V / (Number(comp.value) || 1) * 100)}% de su voltaje nominal (${comp.value} V).</p>`;
+    if(comp.type === 'potentiometer') steps += `<p>Con el cursor al ${Math.round(comp.position)}%, usa ${fR(R)} de sus ${fR(Number(comp.value))}. Mové el deslizador y mirá cómo cambia I.</p>`;
+    triangle = true;
+  } else if(comp.type === 'led'){
+    const vf = Number(comp.value) || 2;
+    steps = result.on
+      ? `<p>1. Un LED encendido mantiene una caída casi fija: <code>Vf ≈ ${fV(vf)}</code> (medido: ${fV(V)}).</p>
+         <p>2. La corriente la limita el resto del circuito. Circulan <code>${fI(I)}</code> (${Math.round(I / LED_MAX_CURRENT * 100)}% de los 20 mA nominales).</p>
+         <p>3. Para elegir su resistencia: <code>R = (V<sub>fuente</sub> − Vf) ÷ I</code></p>`
+      : `<p>El LED está <b>apagado</b>: recibe ${fV(result.voltage)} y necesita al menos ${fV(vf)} en directa (ánodo + a la izquierda).</p>`;
+  } else if(comp.type === 'ammeter'){
+    steps = `<p>Mide la corriente que pasa a través de él: <code>I = ${fI(I)}</code>.</p><p>Va <b>en serie</b>: tiene casi 0 Ω (${AMMETER_R} Ω), así no cambia el circuito. Su caída es mínima: ${fV(V)}.</p>`;
+  } else if(comp.type === 'voltmeter'){
+    steps = `<p>Mide la diferencia de potencial entre sus terminales: <code>V = V(+) − V(−) = ${fV(result.voltage)}</code>.</p><p>Va <b>en paralelo</b>: tiene 10 MΩ, por eso casi no toma corriente (${fI(I)}).</p>`;
+  } else if(comp.type === 'battery'){
+    const req = simulation.equivalentResistance;
+    steps = `<p>Entrega <code>I = ${fI(I)}</code> con <code>${fV(Number(comp.value))}</code>.</p>${req ? `<p>Todo el circuito equivale a una sola resistencia: <code>R<sub>eq</sub> = V ÷ I = ${fR(req)}</code></p>` : ''}<p>Potencia entregada: <code>P = V × I = ${fP(result.power)}</code></p>`;
+  } else if(comp.type === 'switch'){
+    steps = comp.value ? `<p>Cerrado: se comporta como un cable (0,01 Ω). Pasan ${fI(I)}.</p>` : `<p>Abierto: corta el camino, no pasa corriente.</p>`;
+  }
+  return head + `<details class="explain" open><summary>¿Cómo se calculó?</summary>${steps}${triangle ? '<button class="small" id="p-to-triangle">Probar en el triángulo de Ohm</button>' : ''}</details>`;
+}
+
+// ---------- código de colores de resistencias ----------
+const BAND_COLORS = [['negro','#111'],['marrón','#7b4a1e'],['rojo','#d22'],['naranja','#f07a12'],['amarillo','#f5d518'],['verde','#2a9d3a'],['azul','#2a5bd7'],['violeta','#8a3fc4'],['gris','#888'],['blanco','#f2f2f2']];
+const MULTIPLIER_EXTRA = {'-1':['dorado','#c9a227'], '-2':['plateado','#c0c0c0']};
+function colorBands(resistance){
+  if(!(resistance > 0)) return null;
+  let exponent = Math.floor(Math.log10(resistance)) - 1;
+  let digits = Math.round(resistance / Math.pow(10, exponent));
+  if(digits >= 100){ digits = Math.round(digits / 10); exponent++; }
+  if(exponent < -2 || exponent > 9) return null;
+  const multiplier = exponent >= 0 ? BAND_COLORS[exponent] : MULTIPLIER_EXTRA[String(exponent)];
+  const bands = [BAND_COLORS[Math.floor(digits / 10)], BAND_COLORS[digits % 10], multiplier, ['dorado (±5%)','#c9a227']];
+  return {bands:bands, value:digits * Math.pow(10, exponent)};
+}
+function colorCodeHTML(resistance){
+  const code = colorBands(resistance);
+  if(!code) return '';
+  const xs = [30, 42, 54, 74];
+  const rects = code.bands.map(function(band, index){ return `<rect x="${xs[index]}" y="5" width="6" height="22" fill="${band[1]}"/>`; }).join('');
+  const rounded = Math.abs(code.value - resistance) / resistance > 0.001 ? ` <span class="muted">(≈ ${formatElectrical(code.value, 'Ω')})</span>` : '';
+  return `<div class="color-code"><svg width="110" height="32" viewBox="0 0 110 32"><path d="M0 16 H22 M88 16 H110" stroke="#aaa" stroke-width="2"/><rect x="22" y="5" width="66" height="22" rx="9" fill="#d9c49a"/>${rects}</svg><div><span>Código de colores</span>${code.bands.map(function(band){ return band[0]; }).join(' · ')}${rounded}</div></div>`;
+}
+
+function duplicateComponent(comp){
+  const copy = JSON.parse(JSON.stringify(comp));
+  copy.id = idCounter++;
+  const type = TYPES[comp.type];
+  copy.x = clamp(comp.x + 24, 8, 1000 - type.w - 8);
+  copy.y = clamp(comp.y + 48, 12, 700 - type.h - 12);
+  copy.label = comp.label + ' (copia)';
+  components.push(copy);
+  selectedId = copy.id; selectedWireId = null;
+  commitHistory(); render(); renderProps();
+  showToast('Componente duplicado.');
+}
+
 // ---------- drag from palette ----------
 let lastPaletteDrag = 0;
+const LABEL_PREFIX = {resistor:'R', potentiometer:'P', battery:'V', bulb:'L', led:'LED', switch:'S', ammeter:'A', voltmeter:'VM', ground:'GND'};
+function autoLabel(type){
+  const prefix = LABEL_PREFIX[type] || 'X';
+  let number = 1;
+  const used = new Set(components.map(function(comp){ return comp.label; }));
+  while(used.has(prefix + number)) number++;
+  return prefix + number;
+}
+
 function addComponentToCanvas(type, point){
   const definition = TYPES[type];
   if(!definition) return;
@@ -924,10 +1243,11 @@ function addComponentToCanvas(type, point){
     x: clamp(snap(point.x - definition.w / 2), 8, 1000 - definition.w - 8),
     y: clamp(snap(point.y - definition.h / 2), 12, 700 - definition.h - 12),
     value: definition.default,
-    label: definition.name,
+    label: autoLabel(type),
     resistance: definition.defaultResistance,
     rotation: 0
   };
+  normalizeComponent(comp);
   components.push(comp);
   selectedId = comp.id;
   selectedWireId = null;
@@ -947,7 +1267,8 @@ function applyProject(data){
   wires = data.wires.filter(function(wire){ return wire && wire.a && wire.b; }).map(normalizeWire);
   const largestId = components.concat(wires).reduce(function(maximum, item){ return Math.max(maximum, Number(item.id) || 0); }, 0);
   idCounter = Math.max(Number(data.idCounter) || 1, largestId + 1);
-  selectedId = null; selectedWireId = null; pendingTerminal = null; simulation = null;
+  selectedId = null; selectedWireId = null; pendingTerminal = null;
+  refreshSimulation();
   history = [snapshot()]; historyIndex = 0;
   persistCircuit(); updateHistoryButtons(); fitCanvas(); updateConnectionUI(); render(); renderProps(); renderSimulation();
 }
@@ -965,8 +1286,8 @@ const TEMPLATES = {
   'serie-led': {
     components:[
       {id:1,type:'battery',x:130,y:320,value:9,label:'Fuente 9 V',rotation:0},
-      {id:2,type:'resistor',x:395,y:320,value:330,label:'R1',rotation:0},
-      {id:3,type:'bulb',x:665,y:320,value:2,label:'LED',resistance:30,rotation:0}
+      {id:2,type:'resistor',x:395,y:320,value:390,label:'R1',rotation:0},
+      {id:3,type:'led',x:665,y:320,value:2,label:'LED1',color:'rojo',rotation:0}
     ],
     wires:[{id:4,a:{compId:1,tIdx:0},b:{compId:2,tIdx:0}},{id:5,a:{compId:2,tIdx:1},b:{compId:3,tIdx:0}},{id:6,a:{compId:3,tIdx:1},b:{compId:1,tIdx:1}}]
   },
@@ -974,7 +1295,7 @@ const TEMPLATES = {
     components:[
       {id:1,type:'battery',x:120,y:330,value:9,label:'Fuente 9 V',rotation:0},
       {id:2,type:'resistor',x:455,y:180,value:220,label:'R1',rotation:0},
-      {id:3,type:'bulb',x:455,y:470,value:2,label:'LED',resistance:30,rotation:0}
+      {id:3,type:'bulb',x:455,y:470,value:9,label:'L1',resistance:30,rotation:0}
     ],
     wires:[{id:4,a:{compId:1,tIdx:0},b:{compId:2,tIdx:0}},{id:5,a:{compId:1,tIdx:0},b:{compId:3,tIdx:0}},{id:6,a:{compId:2,tIdx:1},b:{compId:1,tIdx:1}},{id:7,a:{compId:3,tIdx:1},b:{compId:1,tIdx:1}}]
   },
@@ -986,13 +1307,104 @@ const TEMPLATES = {
       {id:4,type:'ground',x:720,y:520,value:0,label:'Tierra',rotation:0}
     ],
     wires:[{id:5,a:{compId:1,tIdx:0},b:{compId:2,tIdx:0}},{id:6,a:{compId:2,tIdx:1},b:{compId:3,tIdx:0},label:'Vout'},{id:7,a:{compId:3,tIdx:1},b:{compId:1,tIdx:1}},{id:8,a:{compId:3,tIdx:1},b:{compId:4,tIdx:0}}]
+  },
+  medicion: {
+    components:[
+      {id:1,type:'battery',x:96,y:320,value:9,label:'Fuente 9 V',rotation:0},
+      {id:2,type:'ammeter',x:330,y:176,value:0,label:'A1',rotation:0},
+      {id:3,type:'resistor',x:600,y:176,value:470,label:'R1',rotation:0},
+      {id:4,type:'voltmeter',x:600,y:400,value:0,label:'VM1',rotation:0},
+      {id:5,type:'switch',x:330,y:520,value:1,label:'S1',rotation:0}
+    ],
+    wires:[{id:6,a:{compId:1,tIdx:0},b:{compId:2,tIdx:0}},{id:7,a:{compId:2,tIdx:1},b:{compId:3,tIdx:0}},{id:8,a:{compId:3,tIdx:0},b:{compId:4,tIdx:0}},{id:9,a:{compId:3,tIdx:1},b:{compId:4,tIdx:1}},{id:10,a:{compId:3,tIdx:1},b:{compId:5,tIdx:1}},{id:11,a:{compId:5,tIdx:0},b:{compId:1,tIdx:1}}]
+  },
+  dimmer: {
+    components:[
+      {id:1,type:'battery',x:110,y:320,value:9,label:'Fuente 9 V',rotation:0},
+      {id:2,type:'potentiometer',x:380,y:200,value:1000,position:40,label:'P1',rotation:0},
+      {id:3,type:'resistor',x:380,y:460,value:220,label:'R1',rotation:0},
+      {id:4,type:'led',x:660,y:320,value:2,label:'LED1',color:'verde',rotation:0}
+    ],
+    wires:[{id:5,a:{compId:1,tIdx:0},b:{compId:2,tIdx:0}},{id:6,a:{compId:2,tIdx:1},b:{compId:4,tIdx:0}},{id:7,a:{compId:4,tIdx:1},b:{compId:3,tIdx:1}},{id:8,a:{compId:3,tIdx:0},b:{compId:1,tIdx:1}}]
   }
 };
+
+// ---------- desafíos ----------
+function meterOf(type){ return components.find(function(comp){ return comp.type === type; }); }
+function simOf(comp){ return comp && simulation && simulation.components ? simulation.components[comp.id] : null; }
+function hasErrors(){ return !simulation || !simulation.ok || simulation.messages.some(function(message){ return message.type === 'error'; }); }
+const CHALLENGES = [
+  {
+    title:'Corriente de 20 mA',
+    text:'Con la fuente de 9 V, cambiá el valor de R1 para que el amperímetro marque 20 mA (±5%).',
+    hint:'Despejá R de la Ley de Ohm: R = V ÷ I = 9 V ÷ 0,02 A.',
+    template:{components:[{id:1,type:'battery',x:130,y:320,value:9,label:'Fuente 9 V',rotation:0},{id:2,type:'resistor',x:395,y:200,value:100,label:'R1',rotation:0},{id:3,type:'ammeter',x:665,y:320,value:0,label:'A1',rotation:0}],wires:[{id:4,a:{compId:1,tIdx:0},b:{compId:2,tIdx:0}},{id:5,a:{compId:2,tIdx:1},b:{compId:3,tIdx:0}},{id:6,a:{compId:3,tIdx:1},b:{compId:1,tIdx:1}}]},
+    check:function(){ const r = simOf(meterOf('ammeter')); return !hasErrors() && r && Math.abs(Math.abs(r.current) - 0.02) <= 0.001; }
+  },
+  {
+    title:'Encendé el LED sin quemarlo',
+    text:'Este LED se quema porque R1 es muy chica. Elegí R1 para que circulen entre 10 y 25 mA.',
+    hint:'R = (V fuente − Vf) ÷ I = (9 V − 2 V) ÷ 0,015 A ≈ 470 Ω.',
+    template:{components:[{id:1,type:'battery',x:130,y:320,value:9,label:'Fuente 9 V',rotation:0},{id:2,type:'resistor',x:395,y:320,value:47,label:'R1',rotation:0},{id:3,type:'led',x:665,y:320,value:2,label:'LED1',color:'azul',rotation:0}],wires:[{id:4,a:{compId:1,tIdx:0},b:{compId:2,tIdx:0}},{id:5,a:{compId:2,tIdx:1},b:{compId:3,tIdx:0}},{id:6,a:{compId:3,tIdx:1},b:{compId:1,tIdx:1}}]},
+    check:function(){ const r = simOf(meterOf('led')); return !hasErrors() && r && r.on && !r.burned && r.current >= 0.01 && r.current <= 0.025; }
+  },
+  {
+    title:'Divisor de 3 V',
+    text:'Cambiá R1 y/o R2 para que el voltímetro (sobre R2) marque 3 V (±0,1 V) con la fuente de 12 V.',
+    hint:'En serie la tensión se reparte en proporción a las resistencias: V2 = 12 V × R2 ÷ (R1 + R2). Probá R1 = 3 × R2.',
+    template:{components:[{id:1,type:'battery',x:110,y:330,value:12,label:'Fuente 12 V',rotation:0},{id:2,type:'resistor',x:405,y:200,value:1000,label:'R1',rotation:0},{id:3,type:'resistor',x:405,y:470,value:1000,label:'R2',rotation:0},{id:4,type:'voltmeter',x:720,y:470,value:0,label:'VM1',rotation:0}],wires:[{id:5,a:{compId:1,tIdx:0},b:{compId:2,tIdx:0}},{id:6,a:{compId:2,tIdx:1},b:{compId:3,tIdx:0}},{id:7,a:{compId:3,tIdx:1},b:{compId:1,tIdx:1}},{id:8,a:{compId:3,tIdx:0},b:{compId:4,tIdx:0}},{id:9,a:{compId:3,tIdx:1},b:{compId:4,tIdx:1}}]},
+    check:function(){ const r = simOf(meterOf('voltmeter')); return !hasErrors() && r && Math.abs(Math.abs(r.voltage) - 3) <= 0.1; }
+  },
+  {
+    title:'Paralelo de 100 Ω',
+    text:'Elegí R1 y R2 (en paralelo) para que la resistencia equivalente sea 100 Ω: la fuente de 10 V debe entregar 100 mA (±3%).',
+    hint:'Dos resistencias iguales en paralelo valen la mitad: R1 = R2 = 200 Ω. Fórmula: Req = R1·R2 ÷ (R1 + R2).',
+    template:{components:[{id:1,type:'battery',x:120,y:330,value:10,label:'Fuente 10 V',rotation:0},{id:2,type:'resistor',x:455,y:180,value:1000,label:'R1',rotation:0},{id:3,type:'resistor',x:455,y:470,value:1000,label:'R2',rotation:0}],wires:[{id:4,a:{compId:1,tIdx:0},b:{compId:2,tIdx:0}},{id:5,a:{compId:1,tIdx:0},b:{compId:3,tIdx:0}},{id:6,a:{compId:2,tIdx:1},b:{compId:1,tIdx:1}},{id:7,a:{compId:3,tIdx:1},b:{compId:1,tIdx:1}}]},
+    check:function(){ const resistors = components.filter(function(c){ return c.type === 'resistor'; }); return !hasErrors() && resistors.length >= 2 && Math.abs(simulation.totalCurrent - 0.1) <= 0.003; }
+  },
+  {
+    title:'Medí sin romper nada',
+    text:'El amperímetro está mal conectado (en paralelo con R1) y provoca un corto. Reconectalo en serie para medir la corriente de R1.',
+    hint:'Borrá los cables del amperímetro y armá: + fuente → amperímetro → R1 → − fuente. Todo en una sola “fila”.',
+    template:{components:[{id:1,type:'battery',x:130,y:320,value:9,label:'Fuente 9 V',rotation:0},{id:2,type:'resistor',x:450,y:200,value:1000,label:'R1',rotation:0},{id:3,type:'ammeter',x:450,y:440,value:0,label:'A1',rotation:0}],wires:[{id:4,a:{compId:1,tIdx:0},b:{compId:2,tIdx:0}},{id:5,a:{compId:2,tIdx:1},b:{compId:1,tIdx:1}},{id:6,a:{compId:2,tIdx:0},b:{compId:3,tIdx:0}},{id:7,a:{compId:2,tIdx:1},b:{compId:3,tIdx:1}}]},
+    check:function(){ const a = simOf(meterOf('ammeter')), r = simOf(components.find(function(c){ return c.type === 'resistor'; })); return !hasErrors() && a && r && Math.abs(a.current) > 0.001 && Math.abs(Math.abs(a.current) - Math.abs(r.current)) / Math.abs(r.current) < 0.01; }
+  }
+];
+let challengeIndex = 0;
+function challengeDone(){ try { return JSON.parse(localStorage.getItem(STORAGE_KEY + '-challenges')) || []; } catch(error){ return []; } }
+function renderChallenge(feedback){
+  const box = document.getElementById('challenge-panel');
+  if(!box) return;
+  const challenge = CHALLENGES[challengeIndex], done = challengeDone();
+  box.innerHTML = `<h2>Desafíos <span class="challenge-count">${done.length}/${CHALLENGES.length}</span></h2>
+    <div class="challenge-nav"><button class="small" id="ch-prev" ${challengeIndex === 0 ? 'disabled' : ''}>‹</button><b>${challengeIndex + 1}. ${challenge.title}${done.includes(challengeIndex) ? ' ✓' : ''}</b><button class="small" id="ch-next" ${challengeIndex === CHALLENGES.length - 1 ? 'disabled' : ''}>›</button></div>
+    <p class="challenge-text">${challenge.text}</p>
+    <div class="row-buttons"><button class="small" id="ch-load">Cargar circuito</button><button class="small primary" id="ch-check">Comprobar</button><button class="small" id="ch-hint">Pista</button></div>
+    ${feedback ? `<div class="challenge-feedback ${feedback.ok ? 'ok' : 'bad'}">${feedback.text}</div>` : ''}`;
+  document.getElementById('ch-prev').addEventListener('click', function(){ challengeIndex--; renderChallenge(); });
+  document.getElementById('ch-next').addEventListener('click', function(){ challengeIndex++; renderChallenge(); });
+  document.getElementById('ch-load').addEventListener('click', function(){
+    if((components.length || wires.length) && !confirm('¿Reemplazar el circuito actual por el del desafío?')) return;
+    applyProject(JSON.parse(JSON.stringify(challenge.template)));
+    renderChallenge({ok:false, text:'Circuito cargado. Modificalo y tocá “Comprobar”.'});
+  });
+  document.getElementById('ch-hint').addEventListener('click', function(){ renderChallenge({ok:false, text:'Pista: ' + challenge.hint}); });
+  document.getElementById('ch-check').addEventListener('click', function(){
+    simulation = components.length ? analyseCircuit() : null;
+    render(); renderProps(); renderSimulation();
+    if(challenge.check()){
+      const list = challengeDone(); if(!list.includes(challengeIndex)) list.push(challengeIndex);
+      try { localStorage.setItem(STORAGE_KEY + '-challenges', JSON.stringify(list)); } catch(error) {}
+      renderChallenge({ok:true, text:'¡Correcto! ' + (challengeIndex < CHALLENGES.length - 1 ? 'Pasá al siguiente desafío.' : 'Completaste todos los desafíos.')});
+    } else renderChallenge({ok:false, text:'Todavía no. Revisá los valores en el panel de simulación' + (simulation && simulation.messages.some(function(m){ return m.type === 'error'; }) ? ' (hay un error marcado en rojo).' : '.')});
+  });
+}
 
 const TUTORIAL = [
   {title:'Armá el circuito', copy:'Arrastrá un componente desde la izquierda, o tocá uno en celular. La grilla alinea cada pieza automáticamente.'},
   {title:'Conectá y ordená', copy:'Activá “Conectar cables” y elegí dos terminales. Podés mover componentes, cambiar el estilo de cada cable y dibujar rutas manuales.'},
-  {title:'Simulá y compartí', copy:'Presioná “Simular” para revisar corrientes, tensiones, potencia, circuitos abiertos y posibles cortos. Guardá el proyecto o generá un enlace compartible.'}
+  {title:'Simulá y aprendé', copy:'Con “En vivo” activado el circuito se recalcula solo: vas a ver la corriente moverse por los cables y las lámparas brillar. Tocá un componente para ver cómo se calculó su valor.'},
+  {title:'Miralo en 3D y practicá', copy:'Con “Vista 3D” ves tu circuito como si estuviera armado sobre la mesa (podés girarlo y tocar los interruptores). En “Aprendé” está la teoría con ejemplos y en “Desafíos” ejercicios para practicar. Recordá: es una simulación, nunca experimentes con los 220 V de los enchufes.'}
 ];
 
 function renderTutorial(){
@@ -1079,6 +1491,24 @@ document.getElementById('btn-share').addEventListener('click', async ()=>{
   try { await navigator.clipboard.writeText(url); showToast('Enlace del circuito copiado al portapapeles.'); }
   catch(error) { window.prompt('Copiá el enlace del circuito:', url); }
 });
+document.querySelectorAll('.menu-list button').forEach(function(button){ button.addEventListener('click', function(){ const menu = button.closest('details'); if(menu) menu.open = false; }); });
+document.addEventListener('click', function(e){ document.querySelectorAll('details.menu[open]').forEach(function(menu){ if(!menu.contains(e.target)) menu.open = false; }); });
+function webglAvailable(){
+  try { const canvas = document.createElement('canvas'); return !!(window.WebGLRenderingContext && (canvas.getContext('webgl2') || canvas.getContext('webgl'))); }
+  catch(error){ return false; }
+}
+document.getElementById('btn-3d').addEventListener('click', function(){
+  if(!components.length){ showToast('Agregá componentes o cargá una plantilla para verlos en 3D.'); return; }
+  if(!window.THREE || !window.View3D){ showToast('No se pudo cargar el motor 3D (falta lib/three-bundle.min.js).'); return; }
+  if(!webglAvailable()){
+    if(window.SiteContent) window.SiteContent.openModal('Vista 3D no disponible', '<p>Esta computadora o navegador no tiene activado <b>WebGL</b>, la tecnología que se usa para dibujar en 3D.</p><ul><li>Probá con una versión actualizada de Chrome, Edge o Firefox.</li><li>En Chrome, revisá que esté activada la opción <i>Configuración → Sistema → Usar aceleración por hardware</i>.</li></ul><p>Todo lo demás del simulador funciona igual.</p>');
+    else showToast('Este navegador no permite gráficos 3D (WebGL).');
+    return;
+  }
+  if(!simulation) simulation = analyseCircuit();
+  render(); renderSimulation();
+  window.View3D.open();
+});
 document.getElementById('btn-theme').addEventListener('click', ()=>setTheme(document.body.dataset.theme === 'light' ? 'dark' : 'light'));
 document.getElementById('btn-help').addEventListener('click', openTutorial);
 document.getElementById('btn-clear').addEventListener('click', ()=>{
@@ -1105,12 +1535,18 @@ document.getElementById('tutorial-next').addEventListener('click', ()=>{ if(tuto
 document.getElementById('tutorial-skip').addEventListener('click', closeTutorial);
 
 document.addEventListener('keydown', function(e){
+  const view3d = document.getElementById('view3d'), modal = document.getElementById('modal');
+  if((view3d && !view3d.hidden) || (modal && !modal.hidden)) return;
+  if(document.body.classList.contains('printing-report')) return;
   const typing = /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName);
   if(!typing && e.key === ' '){ spaceKeyDown = true; e.preventDefault(); return; }
   if((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z'){
     e.preventDefault();
     restoreHistory(e.shiftKey ? historyIndex + 1 : historyIndex - 1);
     return;
+  }
+  if((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd' && !typing){
+    e.preventDefault(); const comp = findComponent(selectedId); if(comp) duplicateComponent(comp); return;
   }
   if((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y'){
     e.preventDefault(); restoreHistory(historyIndex + 1); return;
@@ -1135,7 +1571,7 @@ document.addEventListener('keyup', function(e){ if(e.key === ' ') spaceKeyDown =
 // ---------- export ----------
 function serializeSVG(){
   const clone = svg.cloneNode(true);
-  clone.querySelectorAll('.selection-outline, .route-handle, .wire-hit').forEach(function(node){ node.remove(); });
+  clone.querySelectorAll('.selection-outline, .route-handle, .wire-hit, .flow-path').forEach(function(node){ node.remove(); });
   clone.querySelectorAll('.selected').forEach(function(node){ node.classList.remove('selected'); });
   clone.setAttribute('xmlns','http://www.w3.org/2000/svg');
   clone.setAttribute('width', '1000');
@@ -1188,9 +1624,9 @@ const FORMULAS = {
   I: { formula:'I = V ÷ R', sub:'Intensidad = Voltaje ÷ Resistencia', vars:[['V','Voltaje','V'],['R','Resistencia','Ω']], calc:(a,b)=>a/b }
 };
 let activeVar = null;
-document.querySelectorAll('.seg').forEach(seg=>{
-  seg.addEventListener('click', ()=>{
-    activeVar = seg.getAttribute('data-var');
+function selectTriangleVar(variable){
+    activeVar = variable;
+    document.querySelectorAll('.seg').forEach(function(seg){ seg.classList.toggle('active', seg.getAttribute('data-var') === variable); });
     const f = FORMULAS[activeVar];
     document.getElementById('tri-formula').textContent = f.formula;
     document.getElementById('tri-sub').textContent = f.sub;
@@ -1200,7 +1636,9 @@ document.querySelectorAll('.seg').forEach(seg=>{
     document.getElementById('tri-input-2').value = '';
     document.getElementById('tri-result').classList.remove('show');
     document.getElementById('tri-calc').classList.add('show');
-  });
+}
+document.querySelectorAll('.seg').forEach(seg=>{
+  seg.addEventListener('click', ()=>selectTriangleVar(seg.getAttribute('data-var')));
 });
 document.getElementById('tri-calc-btn').addEventListener('click', ()=>{
   const f = FORMULAS[activeVar];
@@ -1214,15 +1652,42 @@ document.getElementById('tri-calc-btn').addEventListener('click', ()=>{
   }
   const result = f.calc(a,b);
   const unit = activeVar==='V' ? 'V' : activeVar==='R' ? 'Ω' : 'A';
-  resultEl.textContent = `${activeVar} = ${result.toLocaleString('es-AR',{maximumFractionDigits:4})} ${unit}`;
+  resultEl.textContent = Number.isFinite(result) ? `${activeVar} = ${formatElectrical(result, unit)}` : 'No se puede dividir por cero.';
   resultEl.classList.add('show');
 });
 
 try { document.body.dataset.theme = localStorage.getItem(STORAGE_KEY + '-theme') || 'dark'; } catch(error) { document.body.dataset.theme = 'dark'; }
+try { liveSimulation = localStorage.getItem(STORAGE_KEY + '-live') !== '0'; } catch(error) {}
 loadCircuit();
+refreshSimulation();
+renderChallenge();
 fitCanvas();
 updateConnectionUI();
 render();
 renderProps();
 renderSimulation();
 try { if(!localStorage.getItem(STORAGE_KEY + '-tutorial')) openTutorial(); } catch(error) { /* La guía sigue disponible en el botón de ayuda. */ }
+// ---------- API para la vista 3D (view3d.js) ----------
+window.CircuitApp = {
+  get components(){ return components; },
+  get wires(){ return wires; },
+  get simulation(){ return simulation; },
+  TYPES:TYPES, LED_COLORS:LED_COLORS,
+  terminals:terminals, terminalWorldPos:terminalWorldPos, wireRoute:wireRoute, wireCurrent:wireCurrent,
+  formatElectrical:formatElectrical, colorBands:colorBands, potResistance:potResistance, valueText:valueText,
+  explain:simulationExplainHTML,
+  toggleSwitch:function(id){
+    const comp = findComponent(id); if(!comp || comp.type !== 'switch') return;
+    comp.value = comp.value ? 0 : 1;
+    commitHistory();
+    if(!simulation) simulation = analyseCircuit();
+    render(); renderProps(); renderSimulation();
+  },
+  setPot:function(id, position, commit){
+    const comp = findComponent(id); if(!comp) return;
+    comp.position = clamp(position, 0, 100);
+    if(commit) commitHistory();
+    simulation = analyseCircuit();
+    render(); renderSimulation();
+  }
+};

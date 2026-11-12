@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Simulador de Circuitos — Ley de Ohm</title>
+<meta name="description" content="Simulador educativo de circuitos eléctricos: armá circuitos, aplicá la Ley de Ohm, medí con amperímetro y voltímetro y miralos en 3D. Gratis y sin registro.">
+<meta name="theme-color" content="#141214">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="canonical" href="https://jeremias0211.github.io/Simulador-De-Circuitos/">
+<meta property="og:type" content="website">
+<meta property="og:locale" content="es_AR">
+<meta property="og:title" content="Simulador de Circuitos — Ley de Ohm">
+<meta property="og:description" content="Armá circuitos, aplicá la Ley de Ohm y miralos en 3D. Proyecto escolar gratuito.">
+<meta property="og:url" content="https://jeremias0211.github.io/Simulador-De-Circuitos/">
+<meta property="og:image" content="https://jeremias0211.github.io/Simulador-De-Circuitos/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <h1><span class="dot"></span>Simulador de Circuitos</h1>
+    <div class="actions">
+      <button id="btn-undo" class="ghost icon-button" title="Deshacer (Ctrl + Z)" aria-label="Deshacer" disabled>↶</button>
+      <button id="btn-redo" class="ghost icon-button" title="Rehacer (Ctrl + Y)" aria-label="Rehacer" disabled>↷</button>
+      <button id="btn-zoom-out" class="ghost icon-button" title="Alejar (−)" aria-label="Alejar">−</button>
+      <button id="btn-zoom-in" class="ghost icon-button" title="Acercar (+)" aria-label="Acercar">+</button>
+      <button id="btn-fit" class="ghost icon-button" title="Ajustar lienzo (F)" aria-label="Ajustar lienzo">⤢</button>
+      <button id="btn-connect" class="ghost">Conectar cables</button>
+      <button id="btn-simulate" class="ghost simulate-button">Simular</button>
+      <button id="btn-3d" class="primary">Vista 3D</button>
+      <button id="btn-learn" class="ghost learn-button">Aprendé</button>
+      <details class="menu">
+        <summary class="menu-button">Archivo ▾</summary>
+        <div class="menu-list">
+          <button id="btn-save-project">Guardar proyecto (.json)</button>
+          <button id="btn-open-project">Abrir proyecto…</button>
+          <button id="btn-share">Copiar enlace para compartir</button>
+          <hr>
+          <button id="btn-svg">Descargar SVG</button>
+          <button id="btn-png">Descargar PNG</button>
+          <hr>
+          <button id="btn-report">Reporte para el docente…</button>
+          <button id="btn-about">Acerca de y créditos</button>
+          <hr>
+          <button id="btn-clear" class="danger">Limpiar todo</button>
+        </div>
+      </details>
+      <button id="btn-theme" class="ghost icon-button" title="Cambiar tema" aria-label="Cambiar tema">◐</button>
+      <button id="btn-help" class="ghost icon-button" title="Ver guía" aria-label="Ver guía">?</button>
+      <input id="project-input" type="file" accept="application/json,.json" hidden>
+    </div>
+  </header>
+
+  <aside class="palette">
+    <h2>Componentes</h2>
+    <div class="palette-item" draggable="true" data-type="resistor">
+      <svg width="34" height="20" viewBox="0 0 34 20"><path d="M0 10 H7 L10 3 L14 17 L18 3 L22 17 L26 10 H34" stroke="#b53a4b" stroke-width="2" fill="none"/></svg>
+      <span>Resistencia</span>
+    </div>
+    <div class="palette-item" draggable="true" data-type="battery">
+      <svg width="34" height="20" viewBox="0 0 34 20"><path d="M0 10 H12 M12 3 V17 M18 6 V14 M18 10 H34" stroke="#b53a4b" stroke-width="2" fill="none"/></svg>
+      <span>Fuente de voltaje</span>
+    </div>
+    <div class="palette-item" draggable="true" data-type="potentiometer">
+      <svg width="34" height="20" viewBox="0 0 34 20"><path d="M0 10 H7 L10 3 L14 17 L18 3 L22 17 L26 10 H34" stroke="#b53a4b" stroke-width="2" fill="none"/><path d="M8 19 L27 1 M27 1 L22 2 M27 1 L26 6" stroke="#f0b45a" stroke-width="1.5" fill="none"/></svg>
+      <span>Potenciómetro</span>
+    </div>
+    <div class="palette-item" draggable="true" data-type="bulb">
+      <svg width="34" height="20" viewBox="0 0 34 20"><circle cx="17" cy="10" r="7" stroke="#b53a4b" stroke-width="2" fill="rgba(255,211,107,.35)"/><path d="M12.5 5.5 L21.5 14.5 M21.5 5.5 L12.5 14.5" stroke="#b53a4b" stroke-width="1.6"/><path d="M0 10 H10 M24 10 H34" stroke="#b53a4b" stroke-width="2"/></svg>
+      <span>Lámpara</span>
+    </div>
+    <div class="palette-item" draggable="true" data-type="led">
+      <svg width="34" height="20" viewBox="0 0 34 20"><path d="M0 10 H12 M22 10 H34 M22 4 V16" stroke="#b53a4b" stroke-width="2" fill="none"/><path d="M12 4 V16 L22 10 Z" fill="#ff3b3b" stroke="#b53a4b" stroke-width="1.5"/></svg>
+      <span>LED</span>
+    </div>
+    <div class="palette-item" draggable="true" data-type="switch">
+      <svg width="34" height="20" viewBox="0 0 34 20"><circle cx="8" cy="10" r="2" fill="#b53a4b"/><circle cx="26" cy="10" r="2" fill="#b53a4b"/><path d="M0 10 H6 M8 10 L23 4 M28 10 H34" stroke="#b53a4b" stroke-width="2" fill="none"/></svg>
+      <span>Interruptor</span>
+    </div>
+    <div class="palette-item" draggable="true" data-type="ammeter">
+      <svg width="34" height="20" viewBox="0 0 34 20"><circle cx="17" cy="10" r="7" stroke="#b53a4b" stroke-width="2" fill="none"/><text x="17" y="14" font-size="9" text-anchor="middle" fill="#b53a4b" font-family="monospace">A</text><path d="M0 10 H10 M24 10 H34" stroke="#b53a4b" stroke-width="2"/></svg>
+      <span>Amperímetro</span>
+    </div>
+    <div class="palette-item" draggable="true" data-type="voltmeter">
+      <svg width="34" height="20" viewBox="0 0 34 20"><circle cx="17" cy="10" r="7" stroke="#b53a4b" stroke-width="2" fill="none"/><text x="17" y="14" font-size="9" text-anchor="middle" fill="#b53a4b" font-family="monospace">V</text><path d="M0 10 H10 M24 10 H34" stroke="#b53a4b" stroke-width="2"/></svg>
+      <span>Voltímetro</span>
+    </div>
+    <div class="palette-item" draggable="true" data-type="ground">
+      <svg width="34" height="20" viewBox="0 0 34 20"><path d="M17 2 V10 M9 10 H25 M12 14 H22 M15 18 H19" stroke="#b53a4b" stroke-width="2"/></svg>
+      <span>Tierra / Nodo</span>
+    </div>
+    <h2 class="palette-section">Plantillas</h2>
+    <div class="template-grid" aria-label="Plantillas de circuitos">
+      <button class="template-button" data-template="serie-led">LED en serie</button>
+      <button class="template-button" data-template="paralelo">Cargas en paralelo</button>
+      <button class="template-button" data-template="divisor">Divisor de tensión</button>
+      <button class="template-button" data-template="medicion">Medir con A y V</button>
+      <button class="template-button" data-template="dimmer">Dimmer con potenciómetro</button>
+    </div>
+    <div class="palette-hint">
+      Arrastrá un componente al lienzo. En celular, tocá un componente para agregarlo. Usá "Conectar cables" y tocá dos terminales para unirlos.<br><br><b>Atajos:</b> R rota · Supr borra · Ctrl+D duplica · Esc cancela.
+    </div>
+    <div class="safety-note" role="note">⚠ Es una simulación educativa. Nunca experimentes con la electricidad de los enchufes (220 V): puede ser mortal.</div>
+    <nav class="palette-footer" aria-label="Información del sitio">
+      <button class="link-button" data-open="about">Acerca de</button> · <button class="link-button" data-open="privacy">Privacidad</button> · <button class="link-button" data-open="licenses">Licencias</button>
+    </nav>
+  </aside>
+
+  <main class="canvas-wrap">
+    <svg id="canvas" viewBox="0 0 1000 700" role="application" aria-label="Lienzo del editor de circuitos">
+      <defs>
+        <filter id="glow" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="5"/></filter>
+        <pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse">
+          <circle cx="1" cy="1" r="1" fill="#302b2e"/>
+        </pattern>
+      </defs>
+      <rect id="grid-bg" x="0" y="0" width="1000" height="700" fill="url(#grid)"/>
+      <g id="wires-layer"></g>
+      <g id="components-layer"></g>
+    </svg>
+    <div class="canvas-mode-badge" id="mode-badge">MODO CONEXIÓN — tocá dos terminales</div>
+    <div class="canvas-helper">Arrastrá componentes · Rueda para zoom · Espacio + arrastrar para panear · Doble clic sobre un cable para enrutar · Los puntos amarillos muestran la corriente</div>
+  </main>
+
+  <aside class="side-panel">
+    <div class="panel-box" id="props-panel">
+      <h2>Propiedades</h2>
+      <div class="empty-hint">Seleccioná un componente del lienzo para ver y editar sus valores.</div>
+    </div>
+
+    <div class="panel-box" id="simulation-panel">
+      <h2>Simulación DC</h2>
+      <div class="sim-empty">Armá un circuito con una fuente y presioná <strong>Simular</strong>. Se calculan tensiones, corriente y potencia para redes resistivas.</div>
+    </div>
+
+    <div class="panel-box" id="challenge-panel"></div>
+
+    <div class="panel-box">
+      <h2>Ley de Ohm</h2>
+      <div class="triangle-wrap">
+        <svg width="220" height="150" viewBox="0 0 300 200">
+          <polygon points="150,10 85,100 215,100" class="seg" data-var="V" fill="#413a3e" stroke="#5a5054" stroke-width="1.5"/>
+          <polygon points="85,100 150,100 150,190 20,190" class="seg" data-var="R" fill="#2b272a" stroke="#5a5054" stroke-width="1.5"/>
+          <polygon points="150,100 215,100 280,190 150,190" class="seg" data-var="I" fill="#2b272a" stroke="#5a5054" stroke-width="1.5"/>
+          <line x1="150" y1="100" x2="150" y2="190" stroke="#0a090a" stroke-width="2"/>
+          <line x1="85" y1="100" x2="215" y2="100" stroke="#0a090a" stroke-width="2"/>
+          <text x="150" y="65" text-anchor="middle" fill="#f5f2f3" font-size="26" font-weight="700" font-family="JetBrains Mono, monospace" style="pointer-events:none;">V</text>
+          <text x="105" y="155" text-anchor="middle" fill="#f5f2f3" font-size="26" font-weight="700" font-family="JetBrains Mono, monospace" style="pointer-events:none;">R</text>
+          <text x="195" y="155" text-anchor="middle" fill="#f5f2f3" font-size="26" font-weight="700" font-family="JetBrains Mono, monospace" style="pointer-events:none;">I</text>
+        </svg>
+        <div class="tri-formula" id="tri-formula">Tocá V, R o I</div>
+        <div class="tri-sub" id="tri-sub">para ver cómo se calcula cada valor</div>
+
+        <div class="tri-calc" id="tri-calc">
+          <div class="field" id="tri-field-1"><label id="tri-label-1"></label><input type="number" id="tri-input-1" step="any" placeholder="0"></div>
+          <div class="field" id="tri-field-2"><label id="tri-label-2"></label><input type="number" id="tri-input-2" step="any" placeholder="0"></div>
+          <button class="primary" id="tri-calc-btn" style="width:100%;">Calcular</button>
+          <div class="tri-result" id="tri-result"></div>
+        </div>
+      </div>
+    </div>
+  </aside>
+</div>
+
+<div class="onboarding" id="onboarding" role="dialog" aria-modal="true" aria-labelledby="tutorial-title" hidden>
+  <div class="onboarding-card">
+    <div class="tutorial-step" id="tutorial-step">GUÍA 1 DE 3</div>
+    <h2 id="tutorial-title"></h2>
+    <p id="tutorial-copy"></p>
+    <div class="tutorial-dots" id="tutorial-dots" aria-hidden="true"></div>
+    <div class="tutorial-actions">
+      <button id="tutorial-skip" class="ghost">Saltar guía</button>
+      <div><button id="tutorial-back" class="ghost">Atrás</button><button id="tutorial-next" class="primary">Siguiente</button></div>
+    </div>
+  </div>
+</div>
+
+<div class="view3d" id="view3d" hidden>
+  <div class="view3d-bar">
+    <strong>Vista 3D del circuito</strong>
+    <span class="view3d-help">Arrastrá para girar · rueda para zoom · clic derecho para mover · tocá un interruptor para abrirlo o cerrarlo</span>
+    <div class="view3d-actions">
+      <label><input type="checkbox" id="v3d-labels" checked> Etiquetas</label>
+      <label><input type="checkbox" id="v3d-flow" checked> Corriente</label>
+      <label><input type="checkbox" id="v3d-spin"> Girar solo</label>
+      <label title="Sin sombras y con menos detalle: ideal para computadoras lentas"><input type="checkbox" id="v3d-lite"> Modo liviano</label>
+      <button id="v3d-reset" class="ghost">Recentrar</button>
+      <button id="v3d-close" class="primary">Volver al editor</button>
+    </div>
+  </div>
+  <div class="view3d-stage" id="view3d-stage"></div>
+  <div class="view3d-info" id="view3d-info" hidden></div>
+  <div class="view3d-legend">Las esferas amarillas son la corriente (del + al −): más rápidas = más corriente.</div>
+</div>
+
+<div class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" hidden>
+  <div class="modal-card">
+    <header class="modal-head"><h2 id="modal-title"></h2><button class="ghost icon-button" id="modal-close" aria-label="Cerrar">×</button></header>
+    <div class="modal-body" id="modal-body"></div>
+  </div>
+</div>
+
+<div id="print-report" class="print-report"></div>
+
+<noscript><div class="noscript">Este simulador necesita JavaScript activado en el navegador.</div></noscript>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script src="lib/three-bundle.min.js"></script>
+<script src="script.js"></script>
+<script src="view3d.js"></script>
+<script src="content.js"></script>
+</body>
+</html>
